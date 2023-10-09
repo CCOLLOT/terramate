@@ -7,8 +7,6 @@ import (
 	"bytes"
 	"context"
 	stdjson "encoding/json"
-	"fmt"
-	"html"
 	"io"
 	"math"
 	"math/rand"
@@ -26,13 +24,14 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/terramate-io/terramate/cloud"
 	"github.com/terramate-io/terramate/cmd/terramate/cli/cliconfig"
+	"github.com/terramate-io/terramate/cmd/terramate/cli/clitest"
 	"github.com/terramate-io/terramate/cmd/terramate/cli/out"
 	"github.com/terramate-io/terramate/errors"
 )
 
 const (
 	// that's a public key.
-	apiKey = "AIzaSyDeCYIgqEhufsnBGtlNu4fv1alvpcs1Nos"
+	defaultAPIKey = "AIzaSyDeCYIgqEhufsnBGtlNu4fv1alvpcs1Nos"
 
 	credfile = "credentials.tmrc.json"
 
@@ -44,17 +43,18 @@ type (
 	googleCredential struct {
 		mu sync.RWMutex
 
+		idpKey       string
 		token        string
 		refreshToken string
 		jwtClaims    jwt.MapClaims
 		expireAt     time.Time
 		email        string
-		isValidated  bool
 		orgs         cloud.MemberOrganizations
 		user         cloud.User
 
 		output out.O
 		clicfg cliconfig.Config
+		client *cloud.Client
 	}
 
 	createAuthURIResponse struct {
@@ -85,10 +85,11 @@ type (
 	}
 )
 
-func googleLogin(output out.O, clicfg cliconfig.Config) error {
+func googleLogin(output out.O, idpKey string, clicfg cliconfig.Config) error {
 	h := &tokenHandler{
 		credentialChan: make(chan credentialInfo),
 		errChan:        make(chan error),
+		idpKey:         idpKey,
 	}
 
 	mux := http.NewServeMux()
@@ -103,7 +104,7 @@ func googleLogin(output out.O, clicfg cliconfig.Config) error {
 
 	go startServer(s, h, redirectURLChan, consentDataChan)
 
-	consentData, err := createAuthURI(<-redirectURLChan)
+	consentData, err := createAuthURI(<-redirectURLChan, idpKey)
 	if err != nil {
 		return err
 	}
@@ -176,7 +177,7 @@ func startServer(
 	}
 }
 
-func createAuthURI(continueURI string) (createAuthURIResponse, error) {
+func createAuthURI(continueURI string, idpKey string) (createAuthURIResponse, error) {
 	const endpoint = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/createAuthUri"
 	const authScope = `{"google.com": "profile"}`
 
@@ -199,7 +200,7 @@ func createAuthURI(continueURI string) (createAuthURIResponse, error) {
 		return createAuthURIResponse{}, errors.E(err)
 	}
 
-	url := endpointURL(endpoint)
+	url := endpointURL(endpoint, idpKey)
 	req, err := http.NewRequest("POST", url.String(), bytes.NewBuffer(postBody))
 	if err != nil {
 		return createAuthURIResponse{}, errors.E(err, "failed to create authentication url")
@@ -252,6 +253,7 @@ type tokenHandler struct {
 	continueURL    string
 	errChan        chan error
 	credentialChan chan credentialInfo
+	idpKey         string
 }
 
 func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -301,7 +303,7 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Str("post-body", string(data)).
 		Msg("prepared request body")
 
-	url := endpointURL(signInEndpoint)
+	url := endpointURL(signInEndpoint, h.idpKey)
 	req, err := http.NewRequest("POST", url.String(), bytes.NewBuffer(data))
 	if err != nil {
 		h.handleErr(w, errors.E(err, "failed to create authentication url"))
@@ -348,20 +350,10 @@ func (h *tokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *tokenHandler) handleOK(w http.ResponseWriter, cred credentialInfo) {
-	const messageFormat = `
-	<html>
-		<head>
-			<title>Terramate Cloud Login Succeed</title>
-		</head>
-		<body>
-			<h2>Successfully authenticated as %s</h2>
-			<p>You can close this page now.</p>
-		</body>
-	</html>
-	`
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(fmt.Sprintf(messageFormat, html.EscapeString(cred.DisplayName))))
 	h.credentialChan <- cred
+
+	w.Header().Add("Location", "https://cloud.terramate.io/cli/signed-in")
+	w.WriteHeader(http.StatusSeeOther)
 }
 
 func (h *tokenHandler) handleErr(w http.ResponseWriter, err error) {
@@ -421,22 +413,29 @@ func loadCredential(output out.O, clicfg cliconfig.Config) (cachedCredential, bo
 	return cred, true, nil
 }
 
-func endpointURL(endpoint string) *url.URL {
+func endpointURL(endpoint string, idpKey string) *url.URL {
 	u, err := url.Parse(endpoint)
 	if err != nil {
 		fatal(err, "failed to parse endpoint URL for createAuthURI")
 	}
 
 	q := u.Query()
-	q.Add("key", apiKey)
+	q.Add("key", idpKey)
 	u.RawQuery = q.Encode()
 	return u
 }
 
-func newGoogleCredential(output out.O, clicfg cliconfig.Config) *googleCredential {
+func newGoogleCredential(
+	output out.O,
+	idpKey string,
+	clicfg cliconfig.Config,
+	client *cloud.Client,
+) *googleCredential {
 	return &googleCredential{
 		output: output,
 		clicfg: clicfg,
+		idpKey: idpKey,
+		client: client,
 	}
 }
 
@@ -451,7 +450,11 @@ func (g *googleCredential) Load() (bool, error) {
 	}
 
 	err = g.update(credinfo.IDToken, credinfo.RefreshToken)
-	return true, err
+	if err != nil {
+		return true, err
+	}
+	g.client.Credential = g
+	return true, g.fetchDetails()
 }
 
 func (g *googleCredential) Name() string {
@@ -490,7 +493,7 @@ func (g *googleCredential) Refresh() (err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), oidcTimeout*time.Second)
 	defer cancel()
 
-	endpoint := endpointURL(refreshTokenURL)
+	endpoint := endpointURL(refreshTokenURL, g.idpKey)
 	reqPayload := RequestBody{
 		GrantType:    "refresh_token",
 		RefreshToken: g.refreshToken,
@@ -577,10 +580,7 @@ func (g *googleCredential) Token() (string, error) {
 	return g.token, nil
 }
 
-// Validate if the credential is ready to be used.
-func (g *googleCredential) Validate(cloudcfg cloudConfig) error {
-	const apiTimeout = 5 * time.Second
-
+func (g *googleCredential) fetchDetails() error {
 	var (
 		err  error
 		user cloud.User
@@ -588,9 +588,9 @@ func (g *googleCredential) Validate(cloudcfg cloudConfig) error {
 	)
 
 	func() {
-		ctx, cancel := context.WithTimeout(context.Background(), apiTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), defaultGoogleTimeout)
 		defer cancel()
-		orgs, err = cloudcfg.client.MemberOrganizations(ctx)
+		orgs, err = g.client.MemberOrganizations(ctx)
 	}()
 
 	if err != nil {
@@ -598,31 +598,24 @@ func (g *googleCredential) Validate(cloudcfg cloudConfig) error {
 	}
 
 	func() {
-		ctx, cancel := context.WithTimeout(context.Background(), apiTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), defaultGoogleTimeout)
 		defer cancel()
-		user, err = cloudcfg.client.Users(ctx)
+		user, err = g.client.Users(ctx)
 	}()
 
-	if err != nil && !errors.IsKind(err, cloud.ErrNotFound) {
+	if err != nil {
+		if errors.IsKind(err, cloud.ErrNotFound) {
+			return errors.E(clitest.ErrCloudOnboardingIncomplete)
+		}
 		return err
 	}
-
-	g.isValidated = true
 	g.orgs = orgs
 	g.user = user
-
-	if len(g.orgs) == 0 || g.user.DisplayName == "" {
-		return errors.E(ErrOnboardingIncomplete)
-	}
 	return nil
 }
 
-// Info display the credential details.
-func (g *googleCredential) Info() {
-	if !g.isValidated {
-		panic(errors.E(errors.ErrInternal, "cred.Info() called for unvalidated credential"))
-	}
-
+// info display the credential details.
+func (g *googleCredential) info() {
 	g.output.MsgStdOut("status: signed in")
 	g.output.MsgStdOut("provider: %s", g.Name())
 

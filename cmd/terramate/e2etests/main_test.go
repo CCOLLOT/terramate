@@ -5,12 +5,16 @@ package e2etest
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/terramate-io/terramate/errors"
+	"github.com/terramate-io/terramate/test"
 )
 
 // terramateTestBin is the path to the terramate binary we compiled for test purposes
@@ -18,6 +22,10 @@ var terramateTestBin string
 
 // testHelperBin is the path to the test binary we compiled for test purposes
 var testHelperBin string
+
+// testHelperBinAsHCL is the path to the test binary but as a safe HCL expression
+// that's valid in all supported OSs.
+var testHelperBinAsHCL string
 
 // The TestMain function creates a terramate binary for testing purposes and
 // deletes it after the tests have been run.
@@ -66,11 +74,16 @@ func setupAndRunTests(m *testing.M) (status int) {
 		return 1
 	}
 
+	testHelperBinAsHCL = fmt.Sprintf(`${tm_chomp(<<-EOF
+		%s
+	EOF
+	)}`, testHelperBin)
+
 	return m.Run()
 }
 
 func buildTestHelper(goBin, testCmdPath, binDir string) (string, error) {
-	outBinPath := filepath.Join(binDir, "test"+platExeSuffix())
+	outBinPath := filepath.Join(binDir, "helper"+platExeSuffix())
 	cmd := exec.Command(
 		goBin,
 		"build",
@@ -82,7 +95,18 @@ func buildTestHelper(goBin, testCmdPath, binDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to build test helper: %v (output: %s)", err, string(out))
 	}
-	return outBinPath, nil
+	data, err := ioutil.ReadFile(outBinPath)
+	if err != nil {
+		return "", errors.E(err, "reading helper binary")
+	}
+
+	tfPath := filepath.Join(binDir, "terraform"+platExeSuffix())
+	err = ioutil.WriteFile(tfPath, data, 0644)
+	if err != nil {
+		return "", errors.E(err, "writing fake terraform binary")
+	}
+	err = test.Chmod(tfPath, 0550)
+	return outBinPath, err
 }
 
 func buildTerramate(goBin, projectRoot, binDir string) (string, error) {

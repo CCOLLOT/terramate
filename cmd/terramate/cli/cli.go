@@ -4,6 +4,7 @@
 package cli
 
 import (
+	"context"
 	stdfmt "fmt"
 	"io"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/terramate-io/go-checkpoint"
 	"github.com/terramate-io/terramate/cloud"
+	cloudstack "github.com/terramate-io/terramate/cloud/stack"
 	"github.com/terramate-io/terramate/cmd/terramate/cli/cliconfig"
 	"github.com/terramate-io/terramate/cmd/terramate/cli/out"
 	"github.com/terramate-io/terramate/config/filter"
@@ -84,13 +86,23 @@ const defaultVendorDir = "/modules"
 
 const terramateUserConfigDir = ".terramate.d"
 
+const (
+	// HumanMode is the default normal mode when Terramate is executed at the user's machine.
+	HumanMode UIMode = iota
+	// AutomationMode is the mode when Terramate executes in the CI/CD environment.
+	AutomationMode
+)
+
+// UIMode defines different modes of operation for the cli.
+type UIMode int
+
 type cliSpec struct {
 	Version        struct{} `cmd:"" help:"Terramate version"`
 	VersionFlag    bool     `name:"version" help:"Terramate version"`
 	Chdir          string   `short:"C" optional:"true" predictor:"file" help:"Sets working directory"`
 	GitChangeBase  string   `short:"B" optional:"true" help:"Git base ref for computing changes"`
 	Changed        bool     `short:"c" optional:"true" help:"Filter by changed infrastructure"`
-	Tags           []string `optional:"true" sep:"none" help:"Filter stacks by tags. Use \":\" for logical AND and \",\" for logical OR. Example: --tags app:prod filters stacks containing tag \"app\" AND \"prod\". If multiple --tags are provided, an OR expression is created. Example: \"--tags A --tags B\" is the same as \"--tags A,B\""`
+	Tags           []string `optional:"true" sep:"none" help:"Filter stacks by tags. Use \":\" for logical AND and \",\" for logical OR. Example: --tags app:prod filters stacks containing tag \"app\" AND \"prod\". If multiple --tags are provided, an OR expression is created. Example: \"--tags a --tags b\" is the same as \"--tags a,b\""`
 	NoTags         []string `optional:"true" sep:"," help:"Filter stacks that do not have the given tags"`
 	LogLevel       string   `optional:"true" default:"warn" enum:"disabled,trace,debug,info,warn,error,fatal" help:"Log level to use: 'disabled', 'trace', 'debug', 'info', 'warn', 'error', or 'fatal'"`
 	LogFmt         string   `optional:"true" default:"console" enum:"console,text,json" help:"Log format to use: 'console', 'text', or 'json'"`
@@ -105,7 +117,7 @@ type cliSpec struct {
 	DisableCheckpointSignature bool `optional:"true" default:"false" help:"Disable checkpoint signature"`
 
 	Create struct {
-		Path           string   `arg:"" name:"path" predictor:"file" help:"Path of the new stack relative to the working dir"`
+		Path           string   `arg:"" optional:"" name:"path" predictor:"file" help:"Path of the new stack relative to the working dir"`
 		ID             string   `help:"ID of the stack, defaults to UUID"`
 		Name           string   `help:"Name of the stack, defaults to stack dir base name"`
 		Description    string   `help:"Description of the stack, defaults to the stack name"`
@@ -113,7 +125,9 @@ type cliSpec struct {
 		After          []string `help:"Add a stack as after"`
 		Before         []string `help:"Add a stack as before"`
 		IgnoreExisting bool     `help:"If the stack already exists do nothing and don't fail"`
-		NoGenerate     bool     `help:"Disable code generation for the newly created stack"`
+		AllTerraform   bool     `help:"initialize all Terraform directories containing terraform.backend blocks defined"`
+		EnsureStackIds bool     `help:"generate an UUID for the stack.id of all stacks which does not define it"`
+		NoGenerate     bool     `help:"Disable code generation for the newly created stacks"`
 	} `cmd:"" help:"Creates a stack on the project"`
 
 	Fmt struct {
@@ -121,18 +135,22 @@ type cliSpec struct {
 	} `cmd:"" help:"Format all files inside dir recursively"`
 
 	List struct {
-		Why bool `help:"Shows the reason why the stack has changed"`
+		Why                bool   `help:"Shows the reason why the stack has changed"`
+		ExperimentalStatus string `help:"Filter by status"`
 	} `cmd:"" help:"List stacks"`
 
 	Run struct {
-		CloudSyncDeployment   bool     `default:"false" help:"Enable synchronization of stack execution with the Terramate Cloud"`
-		DisableCheckGenCode   bool     `default:"false" help:"Disable outdated generated code check"`
-		DisableCheckGitRemote bool     `default:"false" help:"Disable checking if local default branch is updated with remote"`
-		ContinueOnError       bool     `default:"false" help:"Continue executing in other stacks in case of error"`
-		NoRecursive           bool     `default:"false" help:"Do not recurse into child stacks"`
-		DryRun                bool     `default:"false" help:"Plan the execution but do not execute it"`
-		Reverse               bool     `default:"false" help:"Reverse the order of execution"`
-		Command               []string `arg:"" name:"cmd" predictor:"file" passthrough:"" help:"Command to execute"`
+		CloudSyncDeployment        bool     `default:"false" help:"Enable synchronization of stack execution with the Terramate Cloud"`
+		CloudSyncDriftStatus       bool     `default:"false" help:"Enable drift detection and synchronization with the Terramate Cloud"`
+		CloudSyncTerraformPlanFile string   `default:"" help:"Enable sync of Terraform plan file"`
+		DisableCheckGenCode        bool     `default:"false" help:"Disable outdated generated code check"`
+		DisableCheckGitRemote      bool     `default:"false" help:"Disable checking if local default branch is updated with remote"`
+		ContinueOnError            bool     `default:"false" help:"Continue executing in other stacks in case of error"`
+		NoRecursive                bool     `default:"false" help:"Do not recurse into child stacks"`
+		DryRun                     bool     `default:"false" help:"Plan the execution but do not execute it"`
+		Reverse                    bool     `default:"false" help:"Reverse the order of execution"`
+		Eval                       bool     `default:"false" help:"Evaluate command line arguments as HCL strings"`
+		Command                    []string `arg:"" name:"cmd" predictor:"file" passthrough:"" help:"Command to execute"`
 	} `cmd:"" help:"Run command in the stacks"`
 
 	Generate struct{} `cmd:"" help:"Generate terraform code for stacks"`
@@ -140,29 +158,23 @@ type cliSpec struct {
 	InstallCompletions kongplete.InstallCompletions `cmd:"" help:"Install shell completions"`
 
 	Experimental struct {
-		Init struct {
-			AllTerraform bool `help:"initialize all Terraform directories containing terraform.backend blocks defined"`
-			NoGenerate   bool `help:"skip the generation phase"`
-		} `cmd:"" help:"Init existing directories with stacks"`
-
 		Clone struct {
 			SrcDir  string `arg:"" name:"srcdir" predictor:"file" help:"Path of the stack being cloned"`
 			DestDir string `arg:"" name:"destdir" predictor:"file" help:"Path of the new stack"`
 		} `cmd:"" help:"Clones a stack"`
 
 		Trigger struct {
-			Stack  string `arg:"" name:"stack" predictor:"file" help:"Path of the stack being triggered"`
-			Reason string `default:"" name:"reason" help:"Reason for the stack being triggered"`
+			Stack              string `arg:"" optional:"true" name:"stack" predictor:"file" help:"Path of the stack being triggered"`
+			Reason             string `default:"" name:"reason" help:"Reason for the stack being triggered"`
+			ExperimentalStatus string `help:"Filter by status"`
 		} `cmd:"" help:"Triggers a stack"`
 
 		Metadata struct{} `cmd:"" help:"Shows metadata available on the project"`
 
-		Globals struct {
-		} `cmd:"" help:"List globals for all stacks"`
+		Globals struct{} `cmd:"" help:"List globals for all stacks"`
 
 		Generate struct {
-			Debug struct {
-			} `cmd:"" help:"Shows generate debug information"`
+			Debug struct{} `cmd:"" help:"Shows generate debug information"`
 		} `cmd:"" help:"Experimental generate commands"`
 
 		RunGraph struct {
@@ -174,8 +186,7 @@ type cliSpec struct {
 			Basedir string `arg:"" optional:"true" help:"Base directory to search stacks"`
 		} `cmd:"" help:"Show the topological ordering of the stacks"`
 
-		RunEnv struct {
-		} `cmd:"" help:"List run environment variables for all stacks"`
+		RunEnv struct{} `cmd:"" help:"List run environment variables for all stacks"`
 
 		Vendor struct {
 			Download struct {
@@ -203,14 +214,9 @@ type cliSpec struct {
 		} `cmd:"" help:"Get configuration value"`
 
 		Cloud struct {
-			Login struct {
-			} `cmd:"" help:"login for cloud.terramate.io"`
-			Info struct {
-			} `cmd:"" help:"cloud information status"`
+			Login struct{} `cmd:"" help:"login for cloud.terramate.io"`
+			Info  struct{} `cmd:"" help:"cloud information status"`
 		} `cmd:"" help:"Terramate Cloud commands"`
-
-		EnsureStackID struct {
-		} `cmd:"" help:"generate an UUID for the stack.id of all stacks which does not define it"`
 	} `cmd:"" help:"Experimental features (may change or be removed in the future)"`
 }
 
@@ -252,6 +258,7 @@ type cli struct {
 	prj        project
 	httpClient http.Client
 	cloud      cloudConfig
+	uimode     UIMode
 
 	checkpointResults chan *checkpoint.CheckResponse
 
@@ -286,7 +293,6 @@ func newCLI(version string, args []string, stdin io.Reader, stdout, stderr io.Wr
 		}),
 		kong.Writers(stdout, stderr),
 	)
-
 	if err != nil {
 		fatal(err, "creating cli parser")
 	}
@@ -408,7 +414,7 @@ func newCLI(version string, args []string, stdin io.Reader, stdout, stderr io.Wr
 		}
 		return &cli{exit: true}
 	case "experimental cloud login":
-		err := googleLogin(output, clicfg)
+		err := googleLogin(output, idpkey(), clicfg)
 		if err != nil {
 			fatal(err, "authentication failed")
 		}
@@ -467,6 +473,11 @@ func newCLI(version string, args []string, stdin io.Reader, stdout, stderr io.Wr
 		log.Fatal().Msg("flag --changed provided but no git repository found")
 	}
 
+	uimode := HumanMode
+	if val := os.Getenv("CI"); envVarIsSet(val) {
+		uimode = AutomationMode
+	}
+
 	return &cli{
 		version:    version,
 		stdin:      stdin,
@@ -477,6 +488,7 @@ func newCLI(version string, args []string, stdin io.Reader, stdout, stderr io.Wr
 		clicfg:     clicfg,
 		ctx:        ctx,
 		prj:        prj,
+		uimode:     uimode,
 
 		// in order to reduce the number of TCP/SSL handshakes we reuse the same
 		// http.Client in all requests, for most hosts.
@@ -508,6 +520,8 @@ func (c *cli) run() {
 		c.format()
 	case "create <path>":
 		c.createStack()
+	case "create":
+		c.scanCreate()
 	case "list":
 		c.setupGit()
 		c.printStacks()
@@ -518,12 +532,12 @@ func (c *cli) run() {
 		c.runOnStacks()
 	case "generate":
 		c.generate()
-	case "experimental init":
-		c.initStacks()
 	case "experimental clone <srcdir> <destdir>":
 		c.cloneStack()
+	case "experimental trigger":
+		c.triggerStackByFilter()
 	case "experimental trigger <stack>":
-		c.triggerStack()
+		c.triggerStack(c.parsedArgs.Experimental.Trigger.Stack)
 	case "experimental vendor download <source> <ref>":
 		c.vendorDownload()
 	case "experimental globals":
@@ -558,8 +572,6 @@ func (c *cli) run() {
 		c.getConfigValue()
 	case "experimental cloud info":
 		c.cloudInfo()
-	case "experimental ensure-stack-id":
-		c.ensureStackID()
 	default:
 		log.Fatal().Msg("unexpected command sequence")
 	}
@@ -714,8 +726,24 @@ func hasVendorDirConfig(cfg hcl.Config) bool {
 	return cfg.Vendor != nil && cfg.Vendor.Dir != ""
 }
 
-func (c *cli) triggerStack() {
-	stack := c.parsedArgs.Experimental.Trigger.Stack
+func (c *cli) triggerStackByFilter() {
+	if c.parsedArgs.Experimental.Trigger.ExperimentalStatus == "" {
+		fatal(errors.E("trigger command expects either a stack path or the --experimental-status flag"))
+	}
+
+	mgr := stack.NewManager(c.cfg(), c.prj.baseRef)
+	status := parseStatusFilter(c.parsedArgs.Experimental.Trigger.ExperimentalStatus)
+	stacksReport, err := c.listStacks(mgr, false, status)
+	if err != nil {
+		fatal(err)
+	}
+
+	for _, st := range stacksReport.Stacks {
+		c.triggerStack(st.Stack.Dir.String())
+	}
+}
+
+func (c *cli) triggerStack(stack string) {
 	reason := c.parsedArgs.Experimental.Trigger.Reason
 	if reason == "" {
 		reason = "Created using Terramate CLI without setting specific reason."
@@ -925,7 +953,7 @@ func (c *cli) gitSafeguardDefaultBranchIsReachable() {
 		Msg("Safeguard default-branch-is-reachable passed.")
 }
 
-func (c *cli) listStacks(mgr *stack.Manager, isChanged bool) (*stack.Report, error) {
+func (c *cli) listStacks(mgr *stack.Manager, isChanged bool, status cloudstack.FilterStatus) (*stack.Report, error) {
 	var (
 		err    error
 		report *stack.Report
@@ -947,6 +975,48 @@ func (c *cli) listStacks(mgr *stack.Manager, isChanged bool) (*stack.Report, err
 		report, err = mgr.List()
 	}
 
+	if status != cloudstack.NoFilter {
+		err := c.setupCloudConfig()
+		if err != nil {
+			fatal(err)
+		}
+
+		repoURL, err := c.prj.git.wrapper.URL(c.prj.gitcfg().DefaultRemote)
+		if err != nil {
+			fatal(err, "failed to retrieve repository URL but it's needed for checking unhealthy stacks")
+		}
+
+		repository := cloud.NormalizeGitURI(repoURL)
+		if repository == "local" {
+			fatal(err, "unhealthy status filter does not work with filesystem based remotes: %s", repoURL)
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), defaultCloudTimeout)
+		defer cancel()
+		cloudStacks, err := c.cloud.client.Stacks(ctx, c.cloud.run.orgUUID, status)
+		if err != nil {
+			fatal(err)
+		}
+
+		cloudStacksMap := map[string]bool{}
+		for _, stack := range cloudStacks.Stacks {
+			if stack.Repository == repository {
+				cloudStacksMap[stack.MetaID] = true
+			}
+		}
+
+		localStacks := report.Stacks
+		var stacks []stack.Entry
+
+		for _, stack := range localStacks {
+			if cloudStacksMap[stack.Stack.ID] {
+				stacks = append(stacks, stack)
+			}
+		}
+
+		report.Stacks = stacks
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -955,17 +1025,52 @@ func (c *cli) listStacks(mgr *stack.Manager, isChanged bool) (*stack.Report, err
 	return report, nil
 }
 
-func (c *cli) initStacks() {
-	if !c.parsedArgs.Experimental.Init.AllTerraform {
-		fatal(errors.E("The --all-terraform is required"))
+func (c *cli) scanCreate() {
+	if c.parsedArgs.Create.EnsureStackIds && c.parsedArgs.Create.AllTerraform {
+		fatal(errors.E("--all-terraform conflicts with --ensure-stack-ids"))
 	}
 
+	if !c.parsedArgs.Create.AllTerraform && !c.parsedArgs.Create.EnsureStackIds {
+		fatal(errors.E("terramate create requires a path or --all-terraform or --ensure-stack-ids"))
+	}
+
+	var flagname string
+	if c.parsedArgs.Create.EnsureStackIds {
+		flagname = "--ensure-stack-ids"
+	} else {
+		flagname = "--all-terraform"
+	}
+
+	if c.parsedArgs.Create.ID != "" ||
+		c.parsedArgs.Create.Name != "" ||
+		c.parsedArgs.Create.Path != "" ||
+		c.parsedArgs.Create.Description != "" ||
+		c.parsedArgs.Create.IgnoreExisting ||
+		len(c.parsedArgs.Create.After) != 0 ||
+		len(c.parsedArgs.Create.Before) != 0 ||
+		len(c.parsedArgs.Create.Import) != 0 {
+
+		fatal(errors.E(
+			"The %s flag is incompatible with path and the flags: --id, --name, --description, --after, --before, --import and --ignore-existing",
+			flagname,
+		))
+	}
+
+	if c.parsedArgs.Create.AllTerraform {
+		c.initTerraform()
+		return
+	}
+
+	c.ensureStackID()
+}
+
+func (c *cli) initTerraform() {
 	err := c.initDir(c.wd())
 	if err != nil {
 		fatal(err, "failed to initialize some directories")
 	}
 
-	if c.parsedArgs.Experimental.Init.NoGenerate {
+	if c.parsedArgs.Create.NoGenerate {
 		log.Debug().Msg("code generation on stack creation disabled")
 		return
 	}
@@ -1049,12 +1154,15 @@ func (c *cli) initDir(baseDir string) error {
 
 		stackDir := baseDir
 		stackID, err := uuid.NewRandom()
+		dirBasename := filepath.Base(stackDir)
 		if err != nil {
 			fatal(err, "creating stack UUID")
 		}
 		stackSpec := config.Stack{
-			Dir: prj.PrjAbsPath(c.rootdir(), stackDir),
-			ID:  stackID.String(),
+			Dir:         prj.PrjAbsPath(c.rootdir(), stackDir),
+			ID:          stackID.String(),
+			Name:        dirBasename,
+			Description: dirBasename,
 		}
 
 		err = stack.Create(c.cfg(), stackSpec)
@@ -1073,6 +1181,10 @@ func (c *cli) initDir(baseDir string) error {
 }
 
 func (c *cli) createStack() {
+	if c.parsedArgs.Create.AllTerraform || c.parsedArgs.Create.EnsureStackIds {
+		c.scanCreate()
+		return
+	}
 	logger := log.With().
 		Str("workingDir", c.wd()).
 		Str("action", "cli.createStack()").
@@ -1106,6 +1218,11 @@ func (c *cli) createStack() {
 		stackDescription = stackName
 	}
 
+	var tags []string
+	for _, tag := range c.parsedArgs.Tags {
+		tags = append(tags, strings.Split(tag, ",")...)
+	}
+
 	stackSpec := config.Stack{
 		Dir:         prj.PrjAbsPath(c.rootdir(), stackHostDir),
 		ID:          stackID,
@@ -1113,7 +1230,7 @@ func (c *cli) createStack() {
 		Description: stackDescription,
 		After:       c.parsedArgs.Create.After,
 		Before:      c.parsedArgs.Create.Before,
-		Tags:        c.parsedArgs.Tags,
+		Tags:        tags,
 	}
 
 	err := stack.Create(c.cfg(), stackSpec, c.parsedArgs.Create.Import...)
@@ -1221,7 +1338,9 @@ func (c *cli) printStacks() {
 	}
 
 	mgr := stack.NewManager(c.cfg(), c.prj.baseRef)
-	report, err := c.listStacks(mgr, c.parsedArgs.Changed)
+
+	status := parseStatusFilter(c.parsedArgs.List.ExperimentalStatus)
+	report, err := c.listStacks(mgr, c.parsedArgs.Changed, status)
 	if err != nil {
 		fatal(err, "listing stacks")
 	}
@@ -1246,9 +1365,20 @@ func (c *cli) printStacks() {
 	}
 }
 
+func parseStatusFilter(strStatus string) cloudstack.FilterStatus {
+	status := cloudstack.NoFilter
+	if strStatus != "" {
+		status = cloudstack.NewStatusFilter(strStatus)
+		if status != cloudstack.UnhealthyFilter {
+			fatal(errors.E("only %s filter allowed", cloudstack.UnhealthyFilter))
+		}
+	}
+	return status
+}
+
 func (c *cli) printRunEnv() {
 	mgr := stack.NewManager(c.cfg(), c.prj.baseRef)
-	report, err := c.listStacks(mgr, c.parsedArgs.Changed)
+	report, err := c.listStacks(mgr, c.parsedArgs.Changed, cloudstack.NoFilter)
 	if err != nil {
 		fatal(err, "listing stacks")
 	}
@@ -1487,7 +1617,7 @@ func (c *cli) printStacksGlobals() {
 		Msg("Create new terramate manager.")
 
 	mgr := stack.NewManager(c.cfg(), c.prj.baseRef)
-	report, err := c.listStacks(mgr, c.parsedArgs.Changed)
+	report, err := c.listStacks(mgr, c.parsedArgs.Changed, cloudstack.NoFilter)
 	if err != nil {
 		fatal(err, "listing stacks globals: listing stacks")
 	}
@@ -1524,7 +1654,7 @@ func (c *cli) printMetadata() {
 		Msg("Create new terramate manager.")
 
 	mgr := stack.NewManager(c.cfg(), c.prj.baseRef)
-	report, err := c.listStacks(mgr, c.parsedArgs.Changed)
+	report, err := c.listStacks(mgr, c.parsedArgs.Changed, cloudstack.NoFilter)
 	if err != nil {
 		fatal(err, "loading metadata: listing stacks")
 	}
@@ -1588,7 +1718,7 @@ func (c *cli) checkGenCode() bool {
 
 func (c *cli) ensureStackID() {
 	mgr := stack.NewManager(c.cfg(), c.prj.baseRef)
-	report, err := c.listStacks(mgr, false)
+	report, err := c.listStacks(mgr, false, cloudstack.NoFilter)
 	if err != nil {
 		fatal(err, "listing stacks")
 	}
@@ -1608,7 +1738,7 @@ func (c *cli) ensureStackID() {
 }
 
 func (c *cli) eval() {
-	ctx := c.setupEvalContext(c.parsedArgs.Experimental.Eval.Global)
+	ctx := c.detectEvalContext(c.parsedArgs.Experimental.Eval.Global)
 	for _, exprStr := range c.parsedArgs.Experimental.Eval.Exprs {
 		expr, err := ast.ParseExpression(exprStr, "<cmdline>")
 		if err != nil {
@@ -1623,7 +1753,7 @@ func (c *cli) eval() {
 }
 
 func (c *cli) partialEval() {
-	ctx := c.setupEvalContext(c.parsedArgs.Experimental.PartialEval.Global)
+	ctx := c.detectEvalContext(c.parsedArgs.Experimental.PartialEval.Global)
 	for _, exprStr := range c.parsedArgs.Experimental.PartialEval.Exprs {
 		expr, err := ast.ParseExpression(exprStr, "<cmdline>")
 		if err != nil {
@@ -1637,12 +1767,34 @@ func (c *cli) partialEval() {
 	}
 }
 
+func (c *cli) evalRunArgs(st *config.Stack, cmd []string) []string {
+	ctx := c.setupEvalContext(st, map[string]string{})
+	var newargs []string
+	for _, arg := range cmd {
+		exprStr := `"` + arg + `"`
+		expr, err := ast.ParseExpression(exprStr, "<cmd arg>")
+		if err != nil {
+			fatal(err, "parsing %s", exprStr)
+		}
+		val, err := ctx.Eval(expr)
+		if err != nil {
+			fatal(err, "eval %q", exprStr)
+		}
+		if !val.Type().Equals(cty.String) {
+			fatal(errors.E("cmd line evaluates to type %s but only string is permitted", val.Type().FriendlyName()))
+		}
+
+		newargs = append(newargs, val.AsString())
+	}
+	return newargs
+}
+
 func (c *cli) getConfigValue() {
 	logger := log.With().
 		Str("action", "cli.getConfigValue()").
 		Logger()
 
-	ctx := c.setupEvalContext(c.parsedArgs.Experimental.GetConfigValue.Global)
+	ctx := c.detectEvalContext(c.parsedArgs.Experimental.GetConfigValue.Global)
 	for _, exprStr := range c.parsedArgs.Experimental.GetConfigValue.Vars {
 		expr, err := ast.ParseExpression(exprStr, "<cmdline>")
 		if err != nil {
@@ -1688,20 +1840,33 @@ func (c *cli) outputEvalResult(val cty.Value, asJSON bool) {
 	c.output.MsgStdOut(string(data))
 }
 
-func (c *cli) setupEvalContext(overrideGlobals map[string]string) *eval.Context {
-	ctx := eval.NewContext(stdlib.Functions(c.wd()))
-	runtime := c.cfg().Runtime()
+func (c *cli) detectEvalContext(overrideGlobals map[string]string) *eval.Context {
+	var st *config.Stack
 	if config.IsStack(c.cfg(), c.wd()) {
-		st, err := config.LoadStack(c.cfg(), prj.PrjAbsPath(c.rootdir(), c.wd()))
+		var err error
+		st, err = config.LoadStack(c.cfg(), prj.PrjAbsPath(c.rootdir(), c.wd()))
 		if err != nil {
 			fatal(err, "setup eval context: loading stack config")
 		}
+	}
+	return c.setupEvalContext(st, overrideGlobals)
+}
+
+func (c *cli) setupEvalContext(st *config.Stack, overrideGlobals map[string]string) *eval.Context {
+	runtime := c.cfg().Runtime()
+
+	var tdir string
+	if st != nil {
+		tdir = st.HostDir(c.cfg())
 		runtime.Merge(st.RuntimeValues(c.cfg()))
+	} else {
+		tdir = c.wd()
 	}
 
+	ctx := eval.NewContext(stdlib.NoFS(tdir))
 	ctx.SetNamespace("terramate", runtime)
 
-	wdPath := prj.PrjAbsPath(c.rootdir(), c.wd())
+	wdPath := prj.PrjAbsPath(c.rootdir(), tdir)
 	tree, ok := c.cfg().Lookup(wdPath)
 	if !ok {
 		fatal(errors.E("configuration at %s not found", wdPath))
@@ -1730,13 +1895,12 @@ func (c *cli) setupEvalContext(overrideGlobals map[string]string) *eval.Context 
 			}),
 		)
 	}
-
 	_ = exprs.Eval(ctx)
 	return ctx
 }
 
 func envVarIsSet(val string) bool {
-	return val != "0" && val != "false"
+	return val != "" && val != "0" && val != "false"
 }
 
 func (c *cli) checkOutdatedGeneratedCode() {
@@ -1752,7 +1916,6 @@ func (c *cli) checkOutdatedGeneratedCode() {
 	logger.Trace().Msg("checking if any stack has outdated code")
 
 	outdatedFiles, err := generate.DetectOutdated(c.cfg(), c.vendorDir())
-
 	if err != nil {
 		fatal(err, "failed to check outdated code on project")
 	}
@@ -1791,125 +1954,11 @@ func (c *cli) gitSafeguardRemoteEnabled() bool {
 	return true
 }
 
-func (c *cli) runOnStacks() {
-	logger := log.With().
-		Str("action", "runOnStacks()").
-		Str("workingDir", c.wd()).
-		Logger()
-
-	c.gitSafeguardDefaultBranchIsReachable()
-
-	if len(c.parsedArgs.Run.Command) == 0 {
-		logger.Fatal().Msgf("run expects a cmd")
-	}
-
-	c.checkOutdatedGeneratedCode()
-	c.checkSyncDeployment()
-
-	var stacks config.List[*config.SortableStack]
-	if c.parsedArgs.Run.NoRecursive {
-		st, found, err := config.TryLoadStack(c.cfg(), prj.PrjAbsPath(c.rootdir(), c.wd()))
-		if err != nil {
-			fatal(err, "loading stack in current directory")
-		}
-
-		if !found {
-			logger.Fatal().
-				Msg("--no-recursive provided but no stack found in the current directory")
-		}
-
-		stacks = append(stacks, st.Sortable())
-	} else {
-		var err error
-		stacks, err = c.computeSelectedStacks(true)
-		if err != nil {
-			fatal(err, "computing selected stacks")
-		}
-	}
-
-	c.createCloudDeployment(stacks, c.parsedArgs.Run.Command)
-
-	logger.Trace().Msg("Get order of stacks to run command on.")
-
-	orderedStacks, reason, err := run.Sort(c.cfg(), stacks)
-	if err != nil {
-		if errors.IsKind(err, dag.ErrCycleDetected) {
-			fatal(err, "cycle detected: %s", reason)
-		} else {
-			fatal(err, "failed to plan execution")
-		}
-	}
-
-	if c.parsedArgs.Run.Reverse {
-		logger.Trace().Msg("Reversing stacks order.")
-		config.ReverseStacks(orderedStacks)
-	}
-
-	if c.parsedArgs.Run.DryRun {
-		logger.Trace().
-			Msg("Do a dry run - get order without actually running command.")
-		if len(orderedStacks) > 0 {
-			c.output.MsgStdOut("The stacks will be executed using order below:")
-
-			for i, s := range orderedStacks {
-				stackdir, _ := c.friendlyFmtDir(s.Dir().String())
-				c.output.MsgStdOut("\t%d. %s (%s)", i, s.Name, stackdir)
-			}
-		} else {
-			c.output.MsgStdOut("No stacks will be executed.")
-		}
-
-		return
-	}
-
-	beforeHook := func(s *config.Stack, cmd string) {
-		if !c.parsedArgs.Run.CloudSyncDeployment {
-			return
-		}
-		c.syncCloudDeployment(s, cloud.Running)
-	}
-
-	afterHook := func(s *config.Stack, err error) {
-		if !c.parsedArgs.Run.CloudSyncDeployment {
-			return
-		}
-		var status cloud.Status
-		switch {
-		case err == nil:
-			status = cloud.OK
-		case errors.IsKind(err, run.ErrCanceled):
-			status = cloud.Canceled
-		case errors.IsKind(err, run.ErrFailed):
-			status = cloud.Failed
-		default:
-			panic(errors.E(errors.ErrInternal, "unexpected run status"))
-		}
-
-		c.syncCloudDeployment(s, status)
-	}
-
-	err = run.Exec(
-		c.cfg(),
-		orderedStacks,
-		c.parsedArgs.Run.Command,
-		c.stdin,
-		c.stdout,
-		c.stderr,
-		c.parsedArgs.Run.ContinueOnError,
-		beforeHook,
-		afterHook,
-	)
-
-	if err != nil {
-		fatal(err, "one or more commands failed")
-	}
-}
-
 func (c *cli) wd() string           { return c.prj.wd }
 func (c *cli) rootdir() string      { return c.prj.rootdir }
 func (c *cli) cfg() *config.Root    { return &c.prj.root }
 func (c *cli) rootNode() hcl.Config { return c.prj.root.Tree().Node }
-func (c *cli) cred() credential     { return c.cloud.credential }
+func (c *cli) cred() credential     { return c.cloud.client.Credential.(credential) }
 
 func (c *cli) friendlyFmtDir(dir string) (string, bool) {
 	return prj.FriendlyFmtDir(c.rootdir(), c.wd(), dir)
@@ -1927,7 +1976,7 @@ func (c *cli) computeSelectedStacks(ensureCleanRepo bool) (config.List[*config.S
 
 	logger.Trace().Msg("Get list of stacks.")
 
-	report, err := c.listStacks(mgr, c.parsedArgs.Changed)
+	report, err := c.listStacks(mgr, c.parsedArgs.Changed, cloudstack.NoFilter)
 	if err != nil {
 		return nil, err
 	}
@@ -2039,7 +2088,6 @@ func runCheckpoint(version string, clicfg cliconfig.Config, result chan *checkpo
 			CacheFile:     cacheFile,
 		},
 	)
-
 	if err != nil {
 		logger.Debug().Msgf("checkpoint error: %v", err)
 		resp = nil
@@ -2110,7 +2158,6 @@ func newGit(basedir string, checkrepo bool) (*git.Git, error) {
 		WorkingDir: basedir,
 		Env:        os.Environ(),
 	})
-
 	if err != nil {
 		return nil, err
 	}
@@ -2190,7 +2237,6 @@ func lookupProject(wd string) (prj project, found bool, err error) {
 	prj.rootdir = rootCfgPath
 	prj.root = *rootcfg
 	return prj, true, nil
-
 }
 
 func configureLogging(logLevel, logFmt, logdest string, stdout, stderr io.Writer) {

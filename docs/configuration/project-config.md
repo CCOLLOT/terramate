@@ -1,6 +1,6 @@
 ---
-title: Project Configuration | Terramate
-description: Terramate adds powerful capabilities such as code generation, stacks, orchestration, change detection, data sharing and more to Terraform.
+title: Project Configuration
+description: Learn how to configure a Terramate project. Terramate does not depend on user configuration and comes with a set of sensible defaults.
 
 prev:
   text: 'Projet Setup'
@@ -134,4 +134,4 @@ Any attributes defined
 on `terramate.config.run.env` blocks won't affect the `env` namespace.
 
 You can have multiple `terramate.config.run.env` blocks defined on different
-files, but variable names can **not** be defined twice.
+files, but variable names **cannot** be defined twice.

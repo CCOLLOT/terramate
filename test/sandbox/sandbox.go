@@ -418,7 +418,7 @@ func (de DirEntry) CreateDir(relpath string) DirEntry {
 // Chmod does the same as [test.Chmod] for the given file/dir inside
 // this DirEntry.
 func (de DirEntry) Chmod(relpath string, mode fs.FileMode) {
-	test.Chmod(de.t, filepath.Join(de.abspath, relpath), mode)
+	test.AssertChmod(de.t, filepath.Join(de.abspath, relpath), mode)
 }
 
 // ReadFile will read a file inside this dir entry with the given name.
@@ -463,6 +463,8 @@ func (fe FileEntry) Write(body string, args ...interface{}) {
 
 	body = fmt.Sprintf(body, args...)
 
+	test.MkdirAll(fe.t, filepath.Dir(fe.hostpath))
+
 	if err := os.WriteFile(fe.hostpath, []byte(body), 0700); err != nil {
 		fe.t.Fatalf("os.WriteFile(%q) = %v", fe.hostpath, err)
 	}
@@ -472,7 +474,7 @@ func (fe FileEntry) Write(body string, args ...interface{}) {
 func (fe FileEntry) Chmod(mode os.FileMode) {
 	fe.t.Helper()
 
-	test.Chmod(fe.t, fe.hostpath, mode)
+	test.AssertChmod(fe.t, fe.hostpath, mode)
 }
 
 // HostPath returns the absolute path of the file.
@@ -607,7 +609,6 @@ func buildTree(t testing.TB, root *config.Root, layout []string) {
 		assert.NoError(t, err)
 
 		cfg.Stack = &hcl.Stack{}
-		cfg.Terramate = &hcl.Terramate{}
 
 		for _, attr := range attrs {
 			parts := strings.Split(attr, "=")

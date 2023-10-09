@@ -1,6 +1,6 @@
 ---
-title: Change Detection | Terramate
-description: Terramate adds powerful capabilities such as code generation, stacks, orchestration, change detection, data sharing and more to Terraform.
+title: Change Detection
+description: Lean how the Change Detection in Terramate helps you to only execute commands in stacks that contain changes by leveraging the power of Git.
 
 prev:
   text: 'Stacks'
@@ -65,8 +65,8 @@ merged but alternatively the terraform plan/apply can be run in the PR's branch
 just before merge using the default branch base ref (`origin/main`).
 
 The `baseref` can be manually changed by the terramate command line at any given
-point in time using the `--git-change-base` option or through the [project configuration]
-(../configuration/project-config.md), so different strategies for computing the changes are
+point in time using the `--git-change-base` option or through the [project configuration](../configuration/project-config.md),
+so different strategies for computing the changes are
 supported.
 
 If you you adopt the rebase merge strategy and need to apply modifications to stacks

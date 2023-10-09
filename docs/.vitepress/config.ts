@@ -1,5 +1,6 @@
 import type { HeadConfig } from 'vitepress'
 import { defineConfig } from 'vitepress'
+import { glob } from 'glob'
 
 function getPath(path: string) {
   const uri = path.replace(/(?:(^|\/)index)?\.md$/, '$1')
@@ -7,9 +8,24 @@ function getPath(path: string) {
   return uri === 'index' ? '' : uri
 }
 
+const ignoreFiles = [
+  'functions/index.md',
+]
+
+// dynamically constructs the sidebar for the Terraform functions.
+const tfFunctionLinks = glob.sync('functions/*.md', { ignore: ignoreFiles }).map((f: string): object => {
+  const name = f.replace('.md', '').replace('functions/', '')
+
+  return {
+    text: name,
+    link: `/functions/${name}`,
+  }
+}).sort().reverse()
+
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   title: 'Terramate',
+  // titleTemplate: ':title - Terramate',
   description:
     'Terramate adds powerful capabilities such as code generation, stacks, orchestration, change detection, data sharing and more to Terraform.',
   cleanUrls: true,
@@ -23,6 +39,13 @@ export default defineConfig({
             pageData.relativePath,
           )}`,
         },
+      ],
+      // Google Tag Manager
+      [
+        'script',
+        { id: 'register-gtm' },
+        // eslint-disable-next-line @typescript-eslint/quotes
+        `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start': new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0], j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src= 'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f); })(window,document,'script','dataLayer','GTM-5KZT64L');`,
       ],
       [
         'link',
@@ -105,7 +128,7 @@ export default defineConfig({
 
     // https://vitepress.dev/reference/default-theme-config
     nav: [
-      { text: 'Docs', link: '/about-stacks' },
+      { text: 'Docs', link: '/introduction' },
       { text: 'Blog', link: 'https://blog.terramate.io/' },
       { text: 'We are hiring!', link: 'https://jobs.ashbyhq.com/terramate' },
       {
@@ -117,25 +140,19 @@ export default defineConfig({
 
     sidebar: [
       {
-        text: '👋 What is Terramate',
+        text: '👋 Get Started',
         collapsed: false,
         items: [
-          { text: 'Overview', link: '/' },
-          { text: 'About Stacks', link: 'about-stacks' },
-        ],
-      },
-      {
-        text: '🛠️ Getting Started',
-        collapsed: false,
-        items: [
+          { text: 'Introduction', link: 'introduction' },
           { text: 'Installation', link: 'installation' },
-          { text: 'Quick Start', link: 'getting-started/' },
+          { text: 'Quickstart', link: 'getting-started/' },
         ],
       },
       {
         text: '📚 Stacks',
         collapsed: false,
         items: [
+          { text: 'About Stacks', link: 'about-stacks' },
           { text: 'Stack Configuration', link: 'stacks/' },
           { text: 'Orchestration', link: 'orchestration/' },
           { text: 'Tag Filter', link: 'tag-filter' },
@@ -143,7 +160,7 @@ export default defineConfig({
       },
       {
         text: '🕵️ Change Detection',
-        collapses: false,
+        collapsed: false,
         items: [
           { text: 'Stacks', link: 'change-detection/#change-detection' },
           {
@@ -162,7 +179,7 @@ export default defineConfig({
         collapsed: false,
         items: [
           { text: 'Globals', link: 'data-sharing/#globals' },
-          { text: 'Lazy Evaluation', link: 'data-sharing/#lazy-evaluation' },
+          { text: 'Lazy Evaluation', link: 'data-sharing/#lazy-evaluation-in-terramate' },
           { text: 'Metadata', link: 'data-sharing/#metadata' },
           { text: 'Map', link: 'map' },
         ],
@@ -179,23 +196,39 @@ export default defineConfig({
       },
       {
         text: '🔧 Functions',
-        link: 'functions',
+        link: 'functions/index',
+        collapsed: false,
         items: [
           {
-            text: 'tm_ternary',
-            link: 'functions/#tm-ternary-bool-expr-expr-expr',
-          },
-          {
-            text: 'tm_hcl_expression',
-            link: 'functions/#tm-hcl-expression-string-expr',
-          },
-          {
-            text: 'tm_version_match',
-            link: 'functions/#tm-version-match-version-string-constraint-string-optional-arg-object',
-          },
-          {
-            text: 'Experimental Functions',
-            link: 'functions/#experimental-functions',
+            text: 'Terramate specific functions',
+            items: [
+              {
+                text: 'tm_ternary',
+                link: 'functions/terramate-builtin/tm_ternary.md',
+              },
+              {
+                text: 'tm_hcl_expression',
+                link: 'functions/terramate-builtin/tm_hcl_expression.md',
+              },
+              {
+                text: 'tm_version_match',
+                link: 'functions/terramate-builtin/tm_version_match.md',
+              },
+              {
+                text: 'Experimental Functions',
+                items: [
+                  {
+                    text: 'tm_vendor',
+                    link: 'functions/terramate-builtin/tm_vendor.md',
+                  },
+                ],
+              },
+              {
+                text: 'Terraform Functions',
+                collapsed: true,
+                items: tfFunctionLinks,
+              },
+            ],
           },
         ],
       },
@@ -213,46 +246,51 @@ export default defineConfig({
         ],
       },
       {
-        text: '🤓 Guides',
+        text: '💻 Commands (CLI)',
+        link: 'cmdline/',
         collapsed: false,
         items: [
-          {
-            text: 'Introducing Terramate — An Orchestrator and Code Generator for Terraform',
-            link: 'https://blog.terramate.io/introducing-terramate-an-orchestrator-and-code-generator-for-terraform-5e538c9ee055',
-          },
-          {
-            text: 'Understanding the basics of Terramate',
-            link: 'https://blog.terramate.io/understanding-the-basics-of-terramate-e0d8778f5c53',
-          },
-          {
-            text: 'Terramate and Terragrunt',
-            link: 'https://blog.terramate.io/terramate-and-terragrunt-f27f2ec4032f',
-          },
-          {
-            text: 'How to keep your Terraform code DRY by using Terramate',
-            link: 'https://blog.terramate.io/how-to-keep-your-terraform-code-dry-by-using-terramate-be5807fef8f6',
-          },
-          {
-            text: 'Introducing the Terramate VSCode Extension and Language Server',
-            link: 'https://blog.terramate.io/introducing-the-terramate-vscode-extension-and-language-server-d77bd392011c',
-          },
+          { text: 'clone', link: 'cmdline/clone' },
+          { text: 'cloud login', link: 'cmdline/cloud-login' },
+          { text: 'cloud info', link: 'cmdline/cloud-info' },
+          { text: 'create', link: 'cmdline/create' },
+          { text: 'eval', link: 'cmdline/eval' },
+          { text: 'fmt', link: 'cmdline/fmt' },
+          { text: 'generate', link: 'cmdline/generate' },
+          { text: 'get-config-value', link: 'cmdline/get-config-value' },
+          { text: 'globals', link: 'cmdline/globals' },
+          { text: 'install-completions', link: 'cmdline/install-completions' },
+          { text: 'list', link: 'cmdline/list' },
+          { text: 'metadata', link: 'cmdline/metadata' },
+          { text: 'partial-eval', link: 'cmdline/partial-eval' },
+          { text: 'run-env', link: 'cmdline/run-env' },
+          { text: 'run-graph', link: 'cmdline/run-graph' },
+          { text: 'run-order', link: 'cmdline/run-order' },
+          { text: 'run', link: 'cmdline/run' },
+          { text: 'trigger', link: 'cmdline/trigger' },
+          { text: 'vendor download', link: 'cmdline/vendor-download' },
+          { text: 'version', link: 'cmdline/version' },
         ],
       },
-      {
-        items: [{ text: '💬 Discord', link: 'https://terramate.io/discord' }],
-      },
       // {
-      //   text: '🤝🙇 Contributions',
+      //   text: 'Misc',
+      //   collapsed: false,
       //   items: [
-      //   ]
-      // }
+      //     { text: 'Language Server', link: '' },
+      //     { text: 'VSCode Extension', link: '' },
+      //   ],
+      // },
+      {
+        text: '🤓 Guides & Examples',
+        link: 'guides/',
+      },
     ],
 
     socialLinks: [
       { icon: 'github', link: 'https://github.com/terramate-io/terramate' },
       { icon: 'discord', link: 'https://terramate.io/discord' },
       { icon: 'twitter', link: 'https://twitter.com/terramateio' },
-      { icon: 'linkedin', link: 'https://www.linkedin.com/company/terramate' },
+      { icon: 'linkedin', link: 'https://www.linkedin.com/company/terramate-io/' },
     ],
   },
 })

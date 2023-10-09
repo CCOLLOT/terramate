@@ -50,7 +50,7 @@ func TestCLIRunOrder(t *testing.T) {
 				"s:stack-a",
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 				),
 			},
@@ -61,7 +61,7 @@ func TestCLIRunOrder(t *testing.T) {
 				"s:stack:after=[]",
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					`/stack`,
 				),
 			},
@@ -72,7 +72,7 @@ func TestCLIRunOrder(t *testing.T) {
 				fmt.Sprintf("s:stack:after=[%q]", test.NonExistingDir(t)),
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					`/stack`,
 				),
 			},
@@ -83,7 +83,7 @@ func TestCLIRunOrder(t *testing.T) {
 				fmt.Sprintf("s:stack:after=[%q]", test.WriteFile(t, "", "test.txt", `bleh`)),
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					`/stack`,
 				),
 			},
@@ -99,7 +99,7 @@ func TestCLIRunOrder(t *testing.T) {
 				"s:boom",
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/1",
 					"/2",
 					"/3",
@@ -120,7 +120,7 @@ func TestCLIRunOrder(t *testing.T) {
 				"s:stacks/A/AA/AAA",
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stacks",
 					"/stacks/A",
 					"/stacks/A/AA",
@@ -137,7 +137,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-b:after=["../stack-a"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 				),
@@ -150,7 +150,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-b:after=["/stack-a"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 				),
@@ -164,7 +164,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-c:after=["../stack-b"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 					"/stack-c",
@@ -179,7 +179,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-c:after=["/stack-b"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 					"/stack-c",
@@ -194,7 +194,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-a:after=["../stack-b"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-c",
 					"/stack-b",
 					"/stack-a",
@@ -209,7 +209,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-a:after=["/stack-b"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-c",
 					"/stack-b",
 					"/stack-a",
@@ -223,7 +223,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-b`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-b",
 					"/stack-a",
 				),
@@ -238,7 +238,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-d`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-b",
 					"/stack-c",
 					"/stack-d",
@@ -255,7 +255,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-d`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-b",
 					"/stack-c",
 					"/stack-d",
@@ -273,7 +273,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-z`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 					"/stack-c",
@@ -292,7 +292,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-z`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 					"/stack-c",
@@ -310,7 +310,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-d:after=["../stack-b"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 					"/stack-c",
@@ -328,7 +328,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-d:after=["../stack-b"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 					"/stack-c",
@@ -348,7 +348,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-d:after=["../stack-b"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 					"/stack-c",
@@ -370,7 +370,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-h`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-d",
 					"/stack-f",
 					"/stack-b",
@@ -391,7 +391,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-d`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-b",
 					"/stack-c",
 					"/stack-a",
@@ -412,7 +412,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-y`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-x",
 					"/stack-y",
 					"/stack-a",
@@ -496,7 +496,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack-d`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-b",
 					"/stack-c",
 					"/stack-a",
@@ -514,7 +514,7 @@ func TestCLIRunOrder(t *testing.T) {
 			},
 			workingDir: "stacks",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stacks/stack-b",
 					"/stacks/stack-a",
 				),
@@ -528,7 +528,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:parent`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/parent",
 					"/parent/stack-a",
 					"/parent/stack-b",
@@ -594,7 +594,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:grand-parent`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/grand-parent",
 					"/grand-parent/parent",
 					"/grand-parent/parent/child",
@@ -644,7 +644,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack:after=["/dir"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/dir/s1",
 					"/dir/s2",
 					"/dir/s3",
@@ -662,7 +662,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:parent`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/parent",
 					"/parent/s1",
 					"/parent/s2",
@@ -681,7 +681,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:parent`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/parent",
 					"/parent/s1",
 					"/parent/s2",
@@ -700,7 +700,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack:before=["/dir"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack",
 					"/dir/s1",
 					"/dir/s2",
@@ -716,7 +716,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:A-stack:after=["/dir"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/dir/A/B/C/D/Z-stack",
 					"/A-stack",
 				),
@@ -731,7 +731,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack2`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack",
 					"/stack2",
 				),
@@ -757,7 +757,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack2`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack",
 					"/stack2",
 				),
@@ -771,7 +771,7 @@ func TestCLIRunOrder(t *testing.T) {
 			},
 			filterTags: []string{"prod"},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-b",
 				),
 			},
@@ -784,7 +784,7 @@ func TestCLIRunOrder(t *testing.T) {
 			},
 			filterNoTags: []string{"dev"},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-b",
 				),
 			},
@@ -798,7 +798,7 @@ func TestCLIRunOrder(t *testing.T) {
 			filterTags:   []string{"a", "b"},
 			filterNoTags: []string{"c"},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-b",
 				),
 			},
@@ -811,7 +811,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack3:before=["tag:unknown"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack1",
 					"/stack2",
 					"/stack3",
@@ -826,7 +826,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack3:before=["tag:core"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack3",
 					"/stack1",
 					"/stack2",
@@ -841,7 +841,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:stack3:tags=["test"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack2",
 					"/stack1",
 					"/stack3",
@@ -860,7 +860,7 @@ func TestCLIRunOrder(t *testing.T) {
 				`s:app2:tags=["app", "dev"];after=["tag:k8s:dev"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/infra1",
 					"/infra2",
 					"/k8s-infra1",
@@ -879,7 +879,7 @@ func TestCLIRunOrder(t *testing.T) {
 			},
 			workingDir: "/stacks/test",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stacks/test",
 				),
 			},
@@ -892,7 +892,7 @@ func TestCLIRunOrder(t *testing.T) {
 			},
 			workingDir: "/test",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/test",
 				),
 			},
@@ -939,7 +939,7 @@ func TestRunWants(t *testing.T) {
 				`s:stack-a:wants=["/stack-a"]`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 				),
 			},
@@ -951,7 +951,7 @@ func TestRunWants(t *testing.T) {
 				`s:stack-b`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 				),
@@ -964,7 +964,7 @@ func TestRunWants(t *testing.T) {
 				`s:stack-a`,
 			},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 				),
@@ -978,7 +978,7 @@ func TestRunWants(t *testing.T) {
 			},
 			wd: "/stack-a",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 				),
@@ -992,7 +992,7 @@ func TestRunWants(t *testing.T) {
 			},
 			wd: "/stack-b",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-b",
 				),
 			},
@@ -1005,7 +1005,7 @@ func TestRunWants(t *testing.T) {
 			},
 			wd: "/stack-b",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 				),
@@ -1020,7 +1020,7 @@ func TestRunWants(t *testing.T) {
 			},
 			wd: "/stack-b",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 					"/stack-c",
@@ -1036,7 +1036,7 @@ func TestRunWants(t *testing.T) {
 			},
 			wd: "/stack-b",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 					"/stack-c",
@@ -1055,7 +1055,7 @@ func TestRunWants(t *testing.T) {
 			},
 			wd: "/stack-a",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 					"/stack-c",
@@ -1076,7 +1076,7 @@ func TestRunWants(t *testing.T) {
 			},
 			wd: "/stack-b",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-b",
 					"/stack-d",
 					"/stack-e",
@@ -1102,7 +1102,7 @@ func TestRunWants(t *testing.T) {
 			},
 			wd: "/stack-b",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 					"/stack-c",
@@ -1130,7 +1130,7 @@ func TestRunWants(t *testing.T) {
 			},
 			wd: "/stack-b",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-b",
 					"/stack-d",
 					"/stack-a",
@@ -1167,7 +1167,7 @@ func TestRunWants(t *testing.T) {
 			wd:         "/stack-a",
 			filterTags: []string{"k8s"},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 					"/stack-c",
@@ -1188,7 +1188,7 @@ func TestRunWants(t *testing.T) {
 			wd:           "/stack-a",
 			filterNoTags: []string{"infra"},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack-a",
 					"/stack-b",
 					"/stack-c",
@@ -1225,7 +1225,7 @@ func TestRunWantedBy(t *testing.T) {
 			},
 			wd: "/other-stack",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/other-stack",
 					"/stack",
 				),
@@ -1240,7 +1240,7 @@ func TestRunWantedBy(t *testing.T) {
 			},
 			wd: "/stack2",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack1",
 					"/stack2",
 				),
@@ -1255,7 +1255,7 @@ func TestRunWantedBy(t *testing.T) {
 			},
 			wd: "/stack2",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack1",
 					"/stack2",
 					"/stack3",
@@ -1272,7 +1272,7 @@ func TestRunWantedBy(t *testing.T) {
 			},
 			wd: "/stack2",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack1",
 					"/stack2",
 					"/stack3",
@@ -1288,7 +1288,7 @@ func TestRunWantedBy(t *testing.T) {
 			},
 			wd: "/stack1",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stack1",
 					"/stack2",
 				),
@@ -1304,7 +1304,7 @@ func TestRunWantedBy(t *testing.T) {
 			},
 			wd: "/all/test/1",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/all/test/1",
 					"/stack",
 				),
@@ -1320,7 +1320,7 @@ func TestRunWantedBy(t *testing.T) {
 			},
 			wd: "/all/2",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/all/2",
 					"/stack",
 				),
@@ -1336,7 +1336,7 @@ func TestRunWantedBy(t *testing.T) {
 			},
 			wd: "/all",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/all/1",
 					"/all/2",
 					"/stack1",
@@ -1354,7 +1354,7 @@ func TestRunWantedBy(t *testing.T) {
 			},
 			wd: "/all/1",
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/all/1",
 					"/all/2",
 					"/stack1",
@@ -1373,7 +1373,7 @@ func TestRunWantedBy(t *testing.T) {
 			wd:         "/all/test/1",
 			filterTags: []string{"prod"},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/all/test/1",
 					"/stack",
 				),
@@ -1390,7 +1390,7 @@ func TestRunWantedBy(t *testing.T) {
 			wd:           "/all/test/1",
 			filterNoTags: []string{"dev"},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/all/test/1",
 					"/stack",
 				),
@@ -1430,7 +1430,7 @@ func TestRunWantedBy(t *testing.T) {
 			wd:         "/stacks",
 			filterTags: []string{"prod"},
 			want: runExpected{
-				Stdout: listStacks(
+				Stdout: nljoin(
 					"/stacks/stack-b",
 				),
 			},
@@ -1666,12 +1666,12 @@ func TestRunIgnoresAfterBeforeStackRefsOutsideWorkingDirAndTagFilter(t *testing.
 		assertRunResult(t, cli.run(runChangedArgs...), runExpected{Stdout: want})
 	}
 
-	assertRun(".", "", listStacks("stack-1", "parent-stack", "stack-2"))
-	assertRun(".", "stack-1", listStacks("stack-1"))
-	assertRun("stacks", "stack-1,stack-2", listStacks("stack-1", "stack-2"))
-	assertRun("stacks", "stack-2", listStacks("stack-2"))
-	assertRun("stacks/stack-1", "", listStacks("stack-1"))
-	assertRun("stacks/stack-2", "", listStacks("stack-2"))
+	assertRun(".", "", nljoin("stack-1", "parent-stack", "stack-2"))
+	assertRun(".", "stack-1", nljoin("stack-1"))
+	assertRun("stacks", "stack-1,stack-2", nljoin("stack-1", "stack-2"))
+	assertRun("stacks", "stack-2", nljoin("stack-2"))
+	assertRun("stacks/stack-1", "", nljoin("stack-1"))
+	assertRun("stacks/stack-2", "", nljoin("stack-2"))
 }
 
 func TestRunOrderAllChangedStacksExecuted(t *testing.T) {
@@ -1791,10 +1791,9 @@ func TestRunFailIfGitSafeguardUntracked(t *testing.T) {
 	})
 
 	t.Run("disable check using env vars", func(t *testing.T) {
-		cli := newCLI(t, s.RootDir())
-		cli.env = append([]string{
-			"TM_DISABLE_CHECK_GIT_UNTRACKED=true",
-		}, testEnviron(t)...)
+		cli := newCLI(t, s.RootDir(), testEnviron(t)...)
+		cli.appendEnv = append(cli.appendEnv, "TM_DISABLE_CHECK_GIT_UNTRACKED=true")
+
 		assertRun(t, cli.run(
 			"run",
 			"--changed",
@@ -1962,11 +1961,8 @@ func TestRunFailIfGeneratedCodeIsOutdated(t *testing.T) {
 	})
 
 	t.Run("disable check using env vars", func(t *testing.T) {
-		tmcli := newCLI(t, s.RootDir())
-		tmcli.env = append([]string{
-			"TM_DISABLE_CHECK_GEN_CODE=true",
-		}, testEnviron(t)...)
-
+		tmcli := newCLI(t, s.RootDir(), testEnviron(t)...)
+		tmcli.appendEnv = append(tmcli.appendEnv, "TM_DISABLE_CHECK_GEN_CODE=true")
 		assertRunResult(t, tmcli.run("run", "--changed", testHelperBin, "cat", generateFile), runExpected{
 			Stdout: generateFileBody,
 		})
@@ -2090,10 +2086,8 @@ func TestRunFailIfGitSafeguardUncommitted(t *testing.T) {
 	})
 
 	t.Run("disable check using env vars", func(t *testing.T) {
-		cli := newCLI(t, s.RootDir())
-		cli.env = append([]string{
-			"TM_DISABLE_CHECK_GIT_UNCOMMITTED=true",
-		}, testEnviron(t)...)
+		cli := newCLI(t, s.RootDir(), testEnviron(t)...)
+		cli.appendEnv = append(cli.appendEnv, "TM_DISABLE_CHECK_GIT_UNCOMMITTED=true")
 
 		assertRunResult(t, cli.run("run", cat, mainTfFileName), runExpected{
 			Stdout: mainTfAlteredContents,
@@ -2337,8 +2331,7 @@ func TestRunWitCustomizedEnv(t *testing.T) {
 		fmt.Sprintf("TERRAMATE_TEST=%s", exportedTerramateTest),
 	)
 
-	tm := newCLI(t, s.RootDir())
-	tm.env = clienv
+	tm := newCLI(t, s.RootDir(), clienv...)
 
 	res := tm.run("run", testHelperBin, "env")
 	if res.Status != 0 {
@@ -2386,7 +2379,7 @@ stack "/stack":
 	})
 }
 
-func listStacks(stacks ...string) string {
+func nljoin(stacks ...string) string {
 	return strings.Join(stacks, "\n") + "\n"
 }
 

@@ -1,6 +1,6 @@
 ---
-title: Code Generation | Terramate
-description: Terramate adds powerful capabilities such as code generation, stacks, orchestration, change detection, data sharing and more to Terraform.
+title: Code Generation
+description: Learn how to use the Code Generation in Terramate to generate files such as Terraform, Kubernetes Manifests and more.
 
 prev:
   text: 'Map Block'

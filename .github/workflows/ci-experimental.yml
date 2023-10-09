@@ -2,7 +2,15 @@
 # SPDX-License-Identifier: MPL-2.0
 
 name: ci-experimental
-on: [push]
+on:
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'makefiles/**'
+      - '.github/**'
+      - '**/*.tm.hcl'
+      - '.tool-versions'
+
 jobs:
   build_test:
     name: Build and Test
@@ -17,6 +25,10 @@ jobs:
     steps:
       - name: checkout repo
         uses: actions/checkout@v2
+        with:
+          ref: ${{github.event.pull_request.head.ref}}
+          repository: ${{github.event.pull_request.head.repo.full_name}}
+          fetch-depth: 0
 
       - name: configure git
         run: git config --global core.autocrlf false

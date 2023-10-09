@@ -15,6 +15,22 @@ import (
 	"github.com/terramate-io/terramate/errors"
 )
 
+const (
+	// ErrNotFound indicates the resource does not exists.
+	ErrNotFound errors.Kind = "resource not found (HTTP Status: 404)"
+	// ErrUnprocessableEntity indicates the entity cannot be processed for any reason.
+	ErrUnprocessableEntity errors.Kind = "entity cannot be processed (HTTP Status: 422)"
+)
+
+const (
+	// Domain is the default GitHub domain.
+	Domain = "github.com"
+	// APIDomain is the default GitHub API domain.
+	APIDomain = "api." + Domain
+	// APIBaseURL is the default base url for the GitHub API.
+	APIBaseURL = "https://" + APIDomain
+)
+
 type (
 	// Client is a Github HTTP client wrapper.
 	Client struct {
@@ -41,45 +57,38 @@ type (
 // PullsForCommit returns a list of pull request objects associated with the
 // given commit SHA.
 func (c *Client) PullsForCommit(ctx context.Context, repository, commit string) (pulls []Pull, err error) {
-	if c.Token == "" {
-		return nil, errors.E("the Github Token is required in the client")
-	}
 	if !strings.Contains(repository, "/") {
 		return nil, errors.E("expects a valid Github repository of format <owner>/<name>")
 	}
 
 	url := fmt.Sprintf("%s/repos/%s/commits/%s/pulls", c.baseURL(), repository, commit)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	data, err := c.doGet(ctx, url)
 	if err != nil {
-		return nil, errors.E(err, "creating pulls request")
+		return nil, err
 	}
-
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-
-	client := c.httpClient()
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, errors.E(err, "requesting GET %s", url)
-	}
-
-	defer func() {
-		err = errors.L(err, resp.Body.Close()).AsError()
-	}()
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, errors.E(err, "reading response body")
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, errors.E("unexpected status code: %s while getting %s", resp.Status, url)
-	}
-
 	err = json.Unmarshal(data, &pulls)
 	if err != nil {
 		return nil, errors.E(err, "unmarshaling pull list")
 	}
 	return pulls, nil
+}
+
+// Commit retrieves information about an specific commit in the GitHub API.
+func (c *Client) Commit(ctx context.Context, repository, sha string) (*Commit, error) {
+	if !strings.Contains(repository, "/") {
+		return nil, errors.E("expects a valid Github repository of format <owner>/<name>")
+	}
+	url := fmt.Sprintf("%s/repos/%s/commits/%s", c.baseURL(), repository, sha)
+	data, err := c.doGet(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	var commit Commit
+	err = json.Unmarshal(data, &commit)
+	if err != nil {
+		return nil, errors.E(err, "unmarshaling commit info")
+	}
+	return &commit, nil
 }
 
 // OIDCToken requests a new OIDC token.
@@ -91,17 +100,7 @@ func (c *Client) OIDCToken(ctx context.Context, cfg OIDCVars) (token string, err
 
 	req.Header.Set("Authorization", "Bearer "+cfg.ReqToken)
 
-	client := c.httpClient()
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", errors.E(err, "issuing GET %s", cfg.ReqURL)
-	}
-
-	defer func() {
-		err = errors.L(err, resp.Body.Close()).AsError()
-	}()
-
-	data, err := io.ReadAll(resp.Body)
+	data, err := c.doGetWithReq(req)
 	if err != nil {
 		return "", errors.E(err, "reading Github OIDC response body")
 	}
@@ -119,9 +118,50 @@ func (c *Client) OIDCToken(ctx context.Context, cfg OIDCVars) (token string, err
 	return tokresp.Value, nil
 }
 
+func (c *Client) doGet(ctx context.Context, url string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, errors.E(err, "creating pulls request")
+	}
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
+	return c.doGetWithReq(req)
+}
+
+func (c *Client) doGetWithReq(req *http.Request) ([]byte, error) {
+	client := c.httpClient()
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, errors.E(err, "requesting GET %s", req.URL)
+	}
+
+	defer func() {
+		err = errors.L(err, resp.Body.Close()).AsError()
+	}()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, errors.E(err, "reading response body")
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, errors.E(ErrNotFound, "retrieving %s", req.URL)
+	}
+
+	if resp.StatusCode == http.StatusUnprocessableEntity {
+		return nil, errors.E(ErrUnprocessableEntity, "retrieving %s", req.URL)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.E("unexpected status code: %s while getting %s", resp.Status, req.URL)
+	}
+	return data, nil
+}
+
 func (c *Client) baseURL() string {
 	if c.BaseURL == "" {
-		c.BaseURL = "https://api.github.com"
+		c.BaseURL = APIBaseURL
 	}
 	return c.BaseURL
 }
