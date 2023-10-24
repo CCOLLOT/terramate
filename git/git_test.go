@@ -1,7 +1,7 @@
 // Copyright 2023 Terramate GmbH
 // SPDX-License-Identifier: MPL-2.0
 
-//go:build linux
+///go:build linux
 
 package git_test
 
@@ -333,6 +333,31 @@ func TestListRemoteWithMultipleBranches(t *testing.T) {
 	}
 
 	assertEqualRemotes(t, got, want)
+}
+
+func TestGetRemoteDefaultBranch(t *testing.T) {
+	const (
+		remote        = "origin"
+		defaultBranch = "main"
+	)
+
+	repodir := mkOneCommitRepo(t)
+	g := test.NewGitWrapper(t, repodir, []string{})
+
+	remoteDir := test.EmptyRepo(t, true)
+
+	assert.NoError(t, g.RemoteAdd(remote, remoteDir))
+	assert.NoError(t, g.Push(remote, defaultBranch))
+
+	name := g.RemoteDefaultBranch(remote)
+	assert.EqualStrings(t, name, defaultBranch, "default branch with init")
+
+	clonedir := t.TempDir()
+	g = test.NewGitWrapper(t, clonedir, []string{})
+	assert.NoError(t, g.Clone(remoteDir, clonedir))
+
+	name = g.RemoteDefaultBranch(remote)
+	assert.EqualStrings(t, name, defaultBranch, "default branch with clone")
 }
 
 const defaultBranch = "main"

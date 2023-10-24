@@ -307,7 +307,7 @@ func TestMainAfterOriginMainMustUseDefaultBaseRef(t *testing.T) {
 	assertRunResult(t, ts.listChangedStacks(), wantRes)
 }
 
-func TestFailsOnChangeDetectionIfRepoDoesntHaveOriginMain(t *testing.T) {
+func TestFailsOnChangeDetectionIfRepoDoesntHaveOrigin(t *testing.T) {
 	t.Parallel()
 
 	rootdir := t.TempDir()
@@ -343,10 +343,6 @@ func TestFailsOnChangeDetectionIfRepoDoesntHaveOriginMain(t *testing.T) {
 
 	git.SetupRemote("notorigin", "main", "main")
 	assertFails("repository must have a configured")
-
-	git.CheckoutNew("not-main")
-	git.SetupRemote("origin", "not-main", "main")
-	assertFails("has no default branch ")
 }
 
 func TestNoArgsProvidesBasicHelp(t *testing.T) {
@@ -367,6 +363,17 @@ func TestFailsIfDefaultRemoteDoesntHaveDefaultBranch(t *testing.T) {
 	})
 
 	cli := newCLI(t, s.RootDir())
+
+	test.WriteFile(t, s.RootDir(), "terramate.tm.hcl", `
+terramate {
+	config {
+		git {
+			default_branch = "wrong"
+		}
+	}
+}
+`)
+
 	assertRunResult(t,
 		cli.listChangedStacks(),
 		runExpected{
@@ -409,6 +416,20 @@ terramate {
 	}
 }
 `)
+
+	assertRun(t, cli.listChangedStacks())
+}
+
+func TestDefaultBranchDetection(t *testing.T) {
+	t.Parallel()
+
+	s := sandbox.NewWithGitConfig(t, sandbox.GitConfig{
+		DefaultRemoteName:       "origin",
+		DefaultRemoteBranchName: "master",
+		LocalBranchName:         "feat",
+	})
+
+	cli := newCLI(t, s.RootDir())
 
 	assertRun(t, cli.listChangedStacks())
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -774,6 +775,40 @@ func (git *Git) SetRemoteURL(remote, url string) error {
 // URL returns the remote URL.
 func (git *Git) URL(remote string) (string, error) {
 	return git.exec("remote", "get-url", remote)
+}
+
+// RemoteDefaultBranch returns the default branch for the given remote,
+// or an empty string if detection failed.
+func (git *Git) RemoteDefaultBranch(remote string) string {
+	logger := log.With().
+		Str("action", "Git.RemoteDefaultBranch()").
+		Str("remote", remote).
+		Logger()
+
+	// First try to get default branch from local information
+	if out, err := git.exec("symbolic-ref", fmt.Sprintf("refs/remotes/%s/HEAD", remote), "--short"); err == nil {
+		if strings.HasPrefix(out, remote+"/") {
+			return strings.TrimPrefix(out, remote+"/")
+		}
+		logger.Debug().Msgf("failed to parse remote branch name from symbolic-ref: '%s'", out)
+	} else {
+		logger.Debug().Err(err).Msg("failed to get name of default branch locally")
+	}
+
+	// Otherwise try to query remote
+	if out, err := git.exec("ls-remote", "--symref", remote, "HEAD"); err == nil {
+		r := regexp.MustCompile(`^ref: refs/heads/(.+)\tHEAD`)
+		matches := r.FindStringSubmatch(out)
+		if len(matches) == 2 {
+			return matches[1]
+		}
+		logger.Debug().Msgf("failed to parse remote branch name from ls-remote: '%s'", out)
+	} else {
+		logger.Debug().Err(err).Msg("failed to get name of default branch remotely")
+	}
+
+	logger.Debug().Msg("failed to get name of default branch")
+	return ""
 }
 
 func (git *Git) exec(command string, args ...string) (string, error) {
