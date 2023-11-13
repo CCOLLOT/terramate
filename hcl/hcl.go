@@ -111,9 +111,10 @@ type CloudConfig struct {
 
 // RootConfig represents the root config block of a Terramate configuration.
 type RootConfig struct {
-	Git   *GitConfig
-	Run   *RunConfig
-	Cloud *CloudConfig
+	Git         *GitConfig
+	Run         *RunConfig
+	Cloud       *CloudConfig
+	Experiments []string
 }
 
 // ManifestDesc represents a parsed manifest description.
@@ -1420,9 +1421,19 @@ func parseRootConfig(cfg *RootConfig, block *ast.MergedBlock) error {
 	logger.Trace().Msg("Range over block attributes.")
 
 	for _, attr := range block.Attributes.SortedList() {
-		errs.Append(errors.E(attr.NameRange,
-			"unrecognized attribute terramate.config.%s", attr.Name,
-		))
+		if attr.Name != "experiments" {
+			errs.Append(errors.E(attr.NameRange,
+				"unrecognized attribute terramate.config.%s", attr.Name,
+			))
+			continue
+		}
+		val, diags := attr.Expr.Value(nil)
+		if diags.HasErrors() {
+			errs.Append(errors.E(diags, attr.Expr.Range(),
+				"evaluating terramate.config.experiments attribute"))
+			continue
+		}
+		errs.Append(assignSet(attr.Attribute, &cfg.Experiments, val))
 	}
 
 	errs.AppendWrap(ErrTerramateSchema, block.ValidateSubBlocks("git", "run", "cloud"))
