@@ -45,6 +45,7 @@ type Config struct {
 	Vendor    *VendorConfig
 	Asserts   []AssertConfig
 	Generate  GenerateConfig
+	Scripts   []*Script
 
 	Imported RawConfig
 
@@ -1771,6 +1772,14 @@ func (p *TerramateParser) parseTerramateSchema() (Config, error) {
 			if err == nil {
 				config.Generate.Files = append(config.Generate.Files, genfile)
 			}
+
+		case "script":
+			scriptCfg, err := parseScriptBlock(block)
+			if err != nil {
+				errs.Append(err)
+				continue
+			}
+			config.Scripts = append(config.Scripts, scriptCfg)
 		}
 	}
 

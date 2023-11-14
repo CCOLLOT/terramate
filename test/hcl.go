@@ -17,6 +17,7 @@ import (
 	"github.com/terramate-io/terramate/hcl/ast"
 	"github.com/terramate-io/terramate/hcl/info"
 	"github.com/terramate-io/terramate/project"
+	"golang.org/x/exp/slices"
 )
 
 // ParseTerramateConfig parses the Terramate configuration found
@@ -67,6 +68,7 @@ func AssertTerramateConfig(t *testing.T, got, want hcl.Config) {
 	AssertDiff(t, got.Vendor, want.Vendor, "terramate vendor")
 	assertGenHCLBlocks(t, got.Generate.HCLs, want.Generate.HCLs)
 	assertGenFileBlocks(t, got.Generate.Files, want.Generate.Files)
+	assertScriptBlocks(t, got.Scripts, want.Scripts)
 }
 
 // AssertDiff will compare the two values and fail if they are not the same
@@ -268,6 +270,47 @@ func assertGenFileBlocks(t *testing.T, got, want []hcl.GenFileBlock) {
 		assert.EqualStrings(t, wantBlock.Label, gotBlock.Label, "genfile label differs")
 		assertAssertsBlock(t, gotBlock.Asserts, wantBlock.Asserts, "genfile asserts")
 	}
+}
+
+func assertScriptBlocks(t *testing.T, got, want []*hcl.Script) {
+	t.Helper()
+
+	if (got == nil) != (want == nil) {
+		t.Fatalf("want[%+v] != got[%+v]", want, got)
+	}
+
+	if want == nil {
+		return
+	}
+
+	assert.EqualInts(t, len(got), len(want), "script length mismatch")
+
+	for i, g := range got {
+		w := want[i]
+
+		assert.EqualStrings(t, w.Description, g.Description)
+		assert.IsTrue(t, slices.Equal(w.Labels, g.Labels),
+			fmt.Sprintf("script label value mismatch: want[%#v], got [%#v]", w.Labels, g.Labels))
+
+		assert.EqualInts(t, len(w.Jobs), len(g.Jobs), "script len(jobs) mismatch")
+		for k, gotJob := range g.Jobs {
+			wantJob := w.Jobs[k]
+
+			assert.IsTrue(t,
+				slices.Equal(wantJob.Command, gotJob.Command),
+				fmt.Sprintf("script command mismatch: want[%#v], got [%#v]", wantJob.Command, gotJob.Command))
+
+			assert.EqualInts(t, len(wantJob.Commands), len(gotJob.Commands), "script len(Commands) mismatch")
+			for l, gotCommands := range gotJob.Commands {
+				wantCommands := wantJob.Commands[l]
+
+				assert.IsTrue(t,
+					slices.Equal(wantCommands, gotCommands),
+					fmt.Sprintf("script commands mismatch: want[%#v], got [%#v]", wantCommands, gotCommands))
+			}
+		}
+	}
+
 }
 
 func assertTerramateRunBlock(t *testing.T, got, want *hcl.RunConfig) {
