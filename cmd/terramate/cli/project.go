@@ -59,25 +59,6 @@ func (p *project) prettyRepo() string {
 	return p.normalizedRepo
 }
 
-func (p *project) localDefaultBranchCommit() string {
-	if p.git.localDefaultBranchCommit != "" {
-		return p.git.localDefaultBranchCommit
-	}
-	logger := log.With().
-		Str("action", "localDefaultBranchCommit()").
-		Logger()
-
-	gitcfg := p.gitcfg()
-	refName := gitcfg.DefaultRemote + "/" + gitcfg.DefaultBranch
-	val, err := p.git.wrapper.RevParse(refName)
-	if err != nil {
-		logger.Fatal().Err(err).Send()
-	}
-
-	p.git.localDefaultBranchCommit = val
-	return val
-}
-
 func (p *project) headCommit() string {
 	if p.git.headCommit != "" {
 		return p.git.headCommit
@@ -119,35 +100,75 @@ func (p *project) remoteDefaultCommit() string {
 	return p.git.remoteDefaultBranchCommit
 }
 
-func (p *project) isDefaultBranch() bool {
-	git := p.gitcfg()
-	branch, err := p.git.wrapper.CurrentBranch()
-	if err != nil {
-		// WHY?
-		// The current branch name (the symbolic-ref of the HEAD) is not always
-		// available, in this case we naively check if HEAD == local origin/main.
-		// This case usually happens in the git setup of CIs.
-		return p.localDefaultBranchCommit() == p.headCommit()
+// defaultBaseRev returns the revision used for change comparison based on the current Git state.
+func (p *project) defaultBaseRev() string {
+	// Details:
+	// Given origin/main is the default remote/branch, at commit C.
+	// We assume C is the state that ran the last deployment. HEAD is at commit H.
+	//
+	// There's three scenarios, selected if one of the respective cases match, evaluated in order of definition.
+	//
+	//   - Pending changes should be compared to origin/main to find out what has changed since the last deployment.
+	//
+	//     Case 1: H != C and H is not an ancestor of C -- an undeployed, unmerged commit
+	//     Case 2: H == C and symbolic-ref(HEAD) != main -- a new, yet empty branch (=> no changes yet)
+	//
+	//   - Deployed changes should be compared to the previous deployment to find out what changed.
+	//     If we assume that every commit on the main branch is a deployment, that means compare to HEAD^.
+	//
+	//     Case 3: H == C -- latest main commit
+	//     Case 4: H is a first-parent ancestor of main -- previous main commit
+	//
+	//   - Historic changes are all other non-deployed and non-pending, i.e. commits from an already merged and deployed branch.
+	//     They should be compared to the fork point with origin/main.
+	//
+	//     Case 5: H has a fork point with origin/main -- a merged branch commit
+	gitcfg := p.gitcfg()
+	gw := p.git.wrapper
+
+	remoteDefaultBranchRef := p.remoteDefaultBranchRef()
+	headRev, _ := gw.RevParse("HEAD")
+	remoteDefaultRev, _ := gw.RevParse(remoteDefaultBranchRef)
+
+	isRemoteDefaultRev := headRev != "" && headRev == remoteDefaultRev
+
+	isRemoteDefaultRevAncestor, _ := gw.IsAncestor("HEAD", remoteDefaultBranchRef)
+	if !isRemoteDefaultRev && !isRemoteDefaultRevAncestor {
+		// Case 1 (pending)
+		return remoteDefaultBranchRef
 	}
 
-	return branch == git.DefaultBranch
-}
+	branch, _ := gw.CurrentBranch()
+	isDefaultBranch := branch != "" && branch == gitcfg.DefaultBranch
+	isEmptyPendingBranch := isRemoteDefaultRev && !isDefaultBranch
 
-// defaultBaseRef returns the baseRef for the current git environment.
-func (p *project) defaultBaseRef() string {
-	git := p.gitcfg()
-	if p.isDefaultBranch() &&
-		p.remoteDefaultCommit() == p.headCommit() {
-		_, err := p.git.wrapper.RevParse(git.DefaultBranchBaseRef)
-		if err == nil {
-			return git.DefaultBranchBaseRef
-		}
+	if isEmptyPendingBranch {
+		// Case 2 (pending)
+		return remoteDefaultBranchRef
 	}
 
-	return p.defaultBranchRef()
+	if isRemoteDefaultRev {
+		// Case 3 (deployed)
+		return gitcfg.DefaultBranchBaseRef
+	}
+
+	isRemoteDefaultBranchAncestor, _ := gw.IsFirstParentAncestor(remoteDefaultBranchRef, "HEAD")
+	if isRemoteDefaultBranchAncestor {
+		// Case 4 (deployed)
+		return gitcfg.DefaultBranchBaseRef
+	}
+
+	forkPoint, _ := gw.FindForkPoint(remoteDefaultBranchRef, "HEAD")
+	if forkPoint != "" {
+		// Case 5 (historic)
+		return forkPoint
+	}
+
+	// Fallback to deployed strategy
+	return gitcfg.DefaultBranchBaseRef
 }
 
-func (p project) defaultBranchRef() string {
+func (p project) remoteDefaultBranchRef() string {
 	git := p.gitcfg()
 	return git.DefaultRemote + "/" + git.DefaultBranch
 }

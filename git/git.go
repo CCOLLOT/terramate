@@ -849,6 +849,119 @@ func (git *Git) GetConfigValue(key string) (string, error) {
 	return strings.TrimSpace(s), nil
 }
 
+// IsFirstParentAncestor returns if a is on a first parent ancestor path of b.
+func (git *Git) IsFirstParentAncestor(a, b string) (bool, error) {
+	apLenStr, err := git.exec("rev-list", "--count", "--first-parent", "--ancestry-path",
+		fmt.Sprintf("%s..%s", a, b))
+	if err != nil {
+		return false, err
+	}
+
+	apLen, err := strconv.ParseInt(apLenStr, 10, 64)
+	if err != nil {
+		return false, err
+	}
+
+	// The above flags will also return a path for direct non-first parents.
+	// Maybe this could be considered a bug in rev-list. Example:
+	//
+	// *   2d88e3e (HEAD -> main) Merge branch 'branch'
+	// |\
+	// | * 1222a5d (branch) branch change 2
+	// | * 9ca168f branch change 1
+	// * | dae608c main change 1
+	// |/
+	// * 67834ff initial
+	//
+	// `rev-list --first-parent --ancestry-path 1222a5d..main` => 2d88e3e
+	//
+	// That's why we get the length of the path (in this example case N=1)
+	// and compare against main~N, which is the actual Nth first parent
+	// (in this case 1222a5d != dae608c).
+
+	nthFirstParent, err := git.RevParse(fmt.Sprintf("%s~%d", b, apLen))
+	if err != nil {
+		return false, err
+	}
+
+	return a == nthFirstParent, nil
+}
+
+// RevList executes the git rev-list command, which typically returns a list of parents.
+// Note: rev-list can be called with many parameters.
+// We assume it's used so that a list of strings is returned.
+func (git *Git) RevList(args ...string) ([]string, error) {
+	ret, err := git.exec("rev-list", args...)
+	if err != nil {
+		return nil, err
+	}
+
+	revs := strings.Split(ret, "\n")
+
+	var cleanrevs []string
+	for _, r := range revs {
+		r = strings.TrimSpace(r)
+		if r != "" {
+			cleanrevs = append(cleanrevs, r)
+		}
+	}
+	return cleanrevs, nil
+}
+
+// IsAncestor returns if a is an ancestor of b.
+func (git *Git) IsAncestor(a, b string) (bool, error) {
+	revs, err := git.RevList("--boundary", fmt.Sprintf("%s..%s", a, b))
+	if err != nil {
+		return false, err
+	}
+
+	if len(revs) == 0 {
+		return false, nil
+	}
+
+	aHash, err := git.RevParse(a)
+	if err != nil {
+		return false, err
+	}
+
+	return revs[len(revs)-1] == "-"+aHash, nil
+}
+
+// FindForkPoint returns the parent commit at which a and b forked from each other.
+func (git *Git) FindForkPoint(a, b string) (string, error) {
+	as, err := git.RevList("--first-parent", a)
+	if err != nil {
+		return "", err
+	}
+
+	bs, err := git.RevList("--first-parent", b)
+	if err != nil {
+		return "", err
+	}
+
+	alen := len(as)
+	blen := len(bs)
+
+	if alen == 0 || blen == 0 {
+		return "", nil
+	}
+
+	nearestCommonParent := ""
+
+	for negIdx := 1; negIdx <= alen && negIdx <= blen; negIdx++ {
+		acur := as[alen-negIdx]
+		bcur := bs[blen-negIdx]
+
+		if acur != bcur {
+			break
+		}
+
+		nearestCommonParent = acur
+	}
+
+	return nearestCommonParent, nil
+}
+
 func (git *Git) exec(command string, args ...string) (string, error) {
 	logger := log.With().
 		Str("action", "Git.exec()").

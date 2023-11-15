@@ -599,7 +599,7 @@ func (c *cli) setupGit() {
 		if c.parsedArgs.GitChangeBase != "" {
 			c.prj.baseRef = c.parsedArgs.GitChangeBase
 		} else {
-			c.prj.baseRef = c.prj.defaultBaseRef()
+			c.prj.baseRef = c.prj.defaultBaseRev()
 		}
 	}
 }
