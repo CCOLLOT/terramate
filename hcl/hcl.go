@@ -1774,7 +1774,7 @@ func (p *TerramateParser) parseTerramateSchema() (Config, error) {
 			}
 
 		case "script":
-			scriptCfg, err := parseScriptBlock(block)
+			scriptCfg, err := p.parseScriptBlock(block)
 			if err != nil {
 				errs.Append(err)
 				continue

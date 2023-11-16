@@ -288,7 +288,10 @@ func assertScriptBlocks(t *testing.T, got, want []*hcl.Script) {
 	for i, g := range got {
 		w := want[i]
 
-		assert.EqualStrings(t, w.Description, g.Description)
+		assert.EqualStrings(t,
+			exprAsStr(t, w.Description.Expr), exprAsStr(t, g.Description.Expr),
+			"description expr mismatch")
+
 		assert.IsTrue(t, slices.Equal(w.Labels, g.Labels),
 			fmt.Sprintf("script label value mismatch: want[%#v], got [%#v]", w.Labels, g.Labels))
 

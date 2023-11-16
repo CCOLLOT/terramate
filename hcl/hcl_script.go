@@ -37,12 +37,12 @@ type ScriptJob struct {
 
 // Script represents a parsed script block
 type Script struct {
-	Labels      []string     // Labels of the script block used for grouping scripts
-	Description string       // Description is a human readable description of a script
-	Jobs        []*ScriptJob // Job represents the command(s) part of this script
+	Labels      []string      // Labels of the script block used for grouping scripts
+	Description ast.Attribute // Description is a human readable description of a script
+	Jobs        []*ScriptJob  // Job represents the command(s) part of this script
 }
 
-func parseScriptBlock(block *ast.Block) (*Script, error) {
+func (p *TerramateParser) parseScriptBlock(block *ast.Block) (*Script, error) {
 	errs := errors.L()
 
 	if len(block.Labels) != 2 {
@@ -62,7 +62,7 @@ func parseScriptBlock(block *ast.Block) (*Script, error) {
 	for _, attr := range block.Attributes {
 		switch attr.Name {
 		case "description":
-			desc, err := validateDescription(attr)
+			desc, err := p.validateDescription(attr)
 			if err != nil {
 				errs.Append(errors.E(ErrScriptInvalidDesc, attr.NameRange))
 				continue
@@ -99,21 +99,20 @@ func parseScriptBlock(block *ast.Block) (*Script, error) {
 
 }
 
-func validateDescription(attr ast.Attribute) (string, error) {
+func (p *TerramateParser) validateDescription(attr ast.Attribute) (ast.Attribute, error) {
 	errs := errors.L()
 	val, diags := attr.Expr.Value(nil)
 	if diags.HasErrors() {
 		errs.Append(diags)
-		return "", errs.AsError()
+		return ast.Attribute{}, errs.AsError()
 	}
 
-	desc := val.AsString()
-	if desc == "" {
+	if val.AsString() == "" {
 		errs.Append(errors.E("empty description"))
-		return "", errs.AsError()
+		return ast.Attribute{}, errs.AsError()
 	}
 
-	return desc, nil
+	return attr, nil
 }
 
 func validateScriptJobBlock(block *ast.Block) (*ScriptJob, error) {

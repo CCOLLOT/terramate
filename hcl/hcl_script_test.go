@@ -6,12 +6,25 @@ package hcl_test
 import (
 	"testing"
 
+	hhcl "github.com/hashicorp/hcl/v2"
 	"github.com/terramate-io/terramate/errors"
 	"github.com/terramate-io/terramate/hcl"
+	"github.com/terramate-io/terramate/hcl/ast"
+	"github.com/terramate-io/terramate/test"
 	. "github.com/terramate-io/terramate/test/hclutils"
 )
 
 func TestHCLScript(t *testing.T) {
+	makeAttribute := func(t *testing.T, name string, expr string) ast.Attribute {
+		t.Helper()
+		return ast.Attribute{
+			Attribute: &hhcl.Attribute{
+				Name: name,
+				Expr: test.NewExpr(t, expr),
+			},
+		}
+	}
+
 	for _, tc := range []testcase{
 		{
 			name: "script with unrecognized blocks",
@@ -140,7 +153,7 @@ func TestHCLScript(t *testing.T) {
 					Scripts: []*hcl.Script{
 						{
 							Labels:      []string{"group1", "script1"},
-							Description: "some description",
+							Description: makeAttribute(t, "description", `"some description"`),
 							Jobs: []*hcl.ScriptJob{
 								{
 									Command: []string{"echo", "hello"},
@@ -175,7 +188,7 @@ func TestHCLScript(t *testing.T) {
 					Scripts: []*hcl.Script{
 						{
 							Labels:      []string{"group1", "script1"},
-							Description: "some description",
+							Description: makeAttribute(t, "description", `"some description"`),
 							Jobs: []*hcl.ScriptJob{
 								{
 									Commands: [][]string{
@@ -318,7 +331,7 @@ func TestHCLScript(t *testing.T) {
 					Scripts: []*hcl.Script{
 						{
 							Labels:      []string{"group1", "script1"},
-							Description: "some description",
+							Description: makeAttribute(t, "description", `"some description"`),
 							Jobs: []*hcl.ScriptJob{
 								{
 									Commands: [][]string{
@@ -374,7 +387,7 @@ func TestHCLScript(t *testing.T) {
 					Scripts: []*hcl.Script{
 						{
 							Labels:      []string{"group1", "script1"},
-							Description: "script1 desc",
+							Description: makeAttribute(t, "description", `"script1 desc"`),
 							Jobs: []*hcl.ScriptJob{
 								{
 									Commands: [][]string{
@@ -386,7 +399,7 @@ func TestHCLScript(t *testing.T) {
 						},
 						{
 							Labels:      []string{"group1", "script2"},
-							Description: "script2 desc",
+							Description: makeAttribute(t, "description", `"script2 desc"`),
 							Jobs: []*hcl.ScriptJob{
 								{
 									Commands: [][]string{
