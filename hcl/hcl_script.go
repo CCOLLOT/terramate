@@ -27,12 +27,12 @@ const (
 type Command ast.Attribute
 
 // Commands represents a list of executable commands
-type Commands [][]string
+type Commands ast.Attribute
 
 // ScriptJob represent a Job within a Script
 type ScriptJob struct {
-	Command  *Command // Command is a single executable command
-	Commands Commands // Commands is a list of executable commands
+	Command  *Command  // Command is a single executable command
+	Commands *Commands // Commands is a list of executable commands
 }
 
 // Script represents a parsed script block
@@ -131,12 +131,12 @@ func validateScriptJobBlock(block *ast.Block) (*ScriptJob, error) {
 			parsedScriptJob.Command = cmdAttr
 			foundCmd = true
 		case "commands":
-			parsedCmds, err := validateCommands(attr)
+			cmdsAttr, err := validateCommands(attr)
 			if err != nil {
 				errs.Append(errors.E(ErrScriptInvalidCmds, attr.NameRange, attr.Name))
 				continue
 			}
-			parsedScriptJob.Commands = parsedCmds
+			parsedScriptJob.Commands = cmdsAttr
 			foundCmds = true
 		default:
 			errs.Append(errors.E(ErrScriptUnknownAttr, attr.NameRange, attr.Name))
@@ -182,7 +182,7 @@ func validateCommand(cmdAttr ast.Attribute) (*Command, error) {
 
 // validateCommands validates the provided cmdsAttr, parses the attribute into
 // Commands and returns an error if validation fails
-func validateCommands(cmdsAttr ast.Attribute) (Commands, error) {
+func validateCommands(cmdsAttr ast.Attribute) (*Commands, error) {
 	errs := errors.L()
 	val, diags := cmdsAttr.Attribute.Expr.Value(nil)
 	if diags.HasErrors() {
@@ -194,19 +194,18 @@ func validateCommands(cmdsAttr ast.Attribute) (Commands, error) {
 	}
 
 	valSlice := val.AsValueSlice()
-	cmds := make([][]string, 0, len(valSlice))
 	for _, val := range valSlice {
-		parsedCmds, err := ValueAsStringList(val)
+		_, err := ValueAsStringList(val)
 		if err != nil {
 			errs.Append(err)
 		}
-		cmds = append(cmds, parsedCmds)
 	}
 
 	if err := errs.AsError(); err != nil {
 		return nil, err
 	}
 
-	return Commands(cmds), nil
+	parsed := Commands(cmdsAttr)
+	return &parsed, nil
 
 }

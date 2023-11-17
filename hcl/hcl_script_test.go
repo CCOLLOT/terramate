@@ -25,9 +25,14 @@ func TestHCLScript(t *testing.T) {
 		}
 	}
 
-	makeCommand := func(t *testing.T, name, expr string) *hcl.Command {
-		cmd := hcl.Command(makeAttribute(t, "command", expr))
-		return &cmd
+	makeCommand := func(t *testing.T, expr string) *hcl.Command {
+		parsed := hcl.Command(makeAttribute(t, "command", expr))
+		return &parsed
+	}
+
+	makeCommands := func(t *testing.T, expr string) *hcl.Commands {
+		parsed := hcl.Commands(makeAttribute(t, "commands", expr))
+		return &parsed
 	}
 
 	for _, tc := range []testcase{
@@ -161,7 +166,7 @@ func TestHCLScript(t *testing.T) {
 							Description: makeAttribute(t, "description", `"some description"`),
 							Jobs: []*hcl.ScriptJob{
 								{
-									Command: makeCommand(t, "command", `["echo", "hello"]`),
+									Command: makeCommand(t, `["echo", "hello"]`),
 								},
 							},
 						},
@@ -196,10 +201,7 @@ func TestHCLScript(t *testing.T) {
 							Description: makeAttribute(t, "description", `"some description"`),
 							Jobs: []*hcl.ScriptJob{
 								{
-									Commands: [][]string{
-										{"echo", "hello"},
-										{"echo", "bye"},
-									},
+									Commands: makeCommands(t, `[["echo", "hello"], ["echo", "bye"]]`),
 								},
 							},
 						},
@@ -339,19 +341,13 @@ func TestHCLScript(t *testing.T) {
 							Description: makeAttribute(t, "description", `"some description"`),
 							Jobs: []*hcl.ScriptJob{
 								{
-									Commands: [][]string{
-										{"echo", "hello"},
-										{"echo", "bye"},
-									},
+									Commands: makeCommands(t, `[["echo", "hello"], ["echo", "bye"]]`),
 								},
 								{
-									Commands: [][]string{
-										{"ls", "-l"},
-										{"date"},
-									},
+									Commands: makeCommands(t, `[["ls", "-l"], ["date"]]`),
 								},
 								{
-									Command: makeCommand(t, "command", `["stat", "."]`),
+									Command: makeCommand(t, `["stat", "."]`),
 								},
 							},
 						},
@@ -395,10 +391,7 @@ func TestHCLScript(t *testing.T) {
 							Description: makeAttribute(t, "description", `"script1 desc"`),
 							Jobs: []*hcl.ScriptJob{
 								{
-									Commands: [][]string{
-										{"echo", "hello"},
-										{"echo", "bye"},
-									},
+									Commands: makeCommands(t, `[["echo", "hello"], ["echo", "bye"]]`),
 								},
 							},
 						},
@@ -407,9 +400,7 @@ func TestHCLScript(t *testing.T) {
 							Description: makeAttribute(t, "description", `"script2 desc"`),
 							Jobs: []*hcl.ScriptJob{
 								{
-									Commands: [][]string{
-										{"cat", "main.tf"},
-									},
+									Commands: makeCommands(t, `[["cat", "main.tf"]]`),
 								},
 							},
 						},
