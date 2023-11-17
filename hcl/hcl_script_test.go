@@ -25,6 +25,11 @@ func TestHCLScript(t *testing.T) {
 		}
 	}
 
+	makeCommand := func(t *testing.T, name, expr string) *hcl.Command {
+		cmd := hcl.Command(makeAttribute(t, "command", expr))
+		return &cmd
+	}
+
 	for _, tc := range []testcase{
 		{
 			name: "script with unrecognized blocks",
@@ -156,7 +161,7 @@ func TestHCLScript(t *testing.T) {
 							Description: makeAttribute(t, "description", `"some description"`),
 							Jobs: []*hcl.ScriptJob{
 								{
-									Command: []string{"echo", "hello"},
+									Command: makeCommand(t, "command", `["echo", "hello"]`),
 								},
 							},
 						},
@@ -346,7 +351,7 @@ func TestHCLScript(t *testing.T) {
 									},
 								},
 								{
-									Command: []string{"stat", "."},
+									Command: makeCommand(t, "command", `["stat", "."]`),
 								},
 							},
 						},

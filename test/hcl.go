@@ -299,9 +299,9 @@ func assertScriptBlocks(t *testing.T, got, want []*hcl.Script) {
 		for k, gotJob := range g.Jobs {
 			wantJob := w.Jobs[k]
 
-			assert.IsTrue(t,
-				slices.Equal(wantJob.Command, gotJob.Command),
-				fmt.Sprintf("script command mismatch: want[%#v], got [%#v]", wantJob.Command, gotJob.Command))
+			if wantJob.Command != nil {
+				assert.EqualStrings(t, exprAsStr(t, wantJob.Command.Expr), exprAsStr(t, gotJob.Command.Expr), "command mismatch")
+			}
 
 			assert.EqualInts(t, len(wantJob.Commands), len(gotJob.Commands), "script len(Commands) mismatch")
 			for l, gotCommands := range gotJob.Commands {

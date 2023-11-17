@@ -24,14 +24,14 @@ const (
 )
 
 // Command represents an executable command
-type Command []string
+type Command ast.Attribute
 
 // Commands represents a list of executable commands
 type Commands [][]string
 
 // ScriptJob represent a Job within a Script
 type ScriptJob struct {
-	Command  Command  // Command is a single executable command
+	Command  *Command // Command is a single executable command
 	Commands Commands // Commands is a list of executable commands
 }
 
@@ -118,16 +118,18 @@ func (p *TerramateParser) validateDescription(attr ast.Attribute) (ast.Attribute
 func validateScriptJobBlock(block *ast.Block) (*ScriptJob, error) {
 	errs := errors.L()
 
+	var foundCmd, foundCmds bool
 	parsedScriptJob := &ScriptJob{}
 	for _, attr := range block.Attributes {
 		switch attr.Name {
 		case "command":
-			parsedCmd, err := validateCommand(attr)
+			cmdAttr, err := validateCommand(attr)
 			if err != nil {
 				errs.Append(errors.E(ErrScriptInvalidCmd, attr.NameRange, attr.Name))
 				continue
 			}
-			parsedScriptJob.Command = parsedCmd
+			parsedScriptJob.Command = cmdAttr
+			foundCmd = true
 		case "commands":
 			parsedCmds, err := validateCommands(attr)
 			if err != nil {
@@ -135,6 +137,7 @@ func validateScriptJobBlock(block *ast.Block) (*ScriptJob, error) {
 				continue
 			}
 			parsedScriptJob.Commands = parsedCmds
+			foundCmds = true
 		default:
 			errs.Append(errors.E(ErrScriptUnknownAttr, attr.NameRange, attr.Name))
 
@@ -142,7 +145,7 @@ func validateScriptJobBlock(block *ast.Block) (*ScriptJob, error) {
 	}
 
 	// job.command and job.commands are mutually exclusive
-	if len(parsedScriptJob.Command) > 0 && len(parsedScriptJob.Commands) > 0 {
+	if foundCmd && foundCmds {
 		errs.Append(errors.E(ErrScriptCmdConflict, block.TypeRange))
 	}
 
@@ -155,14 +158,14 @@ func validateScriptJobBlock(block *ast.Block) (*ScriptJob, error) {
 
 // validateCommand validates the provided script job block, parses the attribute
 // into Command and returns an error if validation fails
-func validateCommand(cmdAttr ast.Attribute) (Command, error) {
+func validateCommand(cmdAttr ast.Attribute) (*Command, error) {
 	errs := errors.L()
 	val, diags := cmdAttr.Attribute.Expr.Value(nil)
 	if diags.HasErrors() {
 		errs.Append(diags)
 	}
 
-	parsedCmd, err := ValueAsStringList(val)
+	_, err := ValueAsStringList(val)
 	if err != nil {
 		errs.Append(err)
 	}
@@ -171,7 +174,9 @@ func validateCommand(cmdAttr ast.Attribute) (Command, error) {
 		return nil, err
 	}
 
-	return Command(parsedCmd), nil
+	parsed := Command(cmdAttr)
+
+	return &parsed, nil
 
 }
 
